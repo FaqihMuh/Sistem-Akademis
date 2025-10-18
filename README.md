@@ -1,12 +1,21 @@
-activate venv : 
+NEW UPDATE: 
+PMB module!
+###
+activate venv: 
 python -m venv .venv
 .venv\Scripts\activate
 
-install requirement :
+install requirement:
 pip install -r requirements.txt
 
-ai prompt : 
+ai prompt: 
 check prompts folder
+
+Screenshots:
+check docs folder
+
+UML diagrams:
+check diagrams folder
 
 demo 1:
 https://youtu.be/eNazdm_UOcU
