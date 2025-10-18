@@ -1,0 +1,342 @@
+Sebagai senior software architect, perbaiki file sistem-akademik.mermaid. dan simpan hasil perubahannya juga pada file baru Bernama classDiagram.mermaid
+desain class diagram untuk modul KRS dengan aturan:
+- SKS maksimal 24 per semester
+- Cek prasyarat mata kuliah
+- Prevent double enrollment
+Buat class: KRSManager, ValidationRule, CoursePrerequisite.
+tambahkan juga data berikut jika belum ada :
+- Hierarki User (Mahasiswa, Dosen, Admin, CalonMahasiswa)
+- Class inti: Course, Enrollment, Schedule, Grade, Payment
+- Relasi: inheritance, composition, aggregation
+- Atribut & method dengan visibility modifier
+
+Gunakan Strategy pattern untuk validasi. Output gunakan format yang kompatibel dengan https://mermaid.js.org. dan tanpa notes
+
+
+
+
+
+Audit class diagram pada file classDiagram.mermaid terhadap prinsip SOLID. Serta
+Identifikasi pelanggaran dan beri rekomendasi refactor.
+Fokus pada Single Responsibility dan Dependency Inversion. simpan perubahannya pada file yang sama
+
+
+
+
+
+
+
+lakukan perubahan di file diagram classDiagram.mermaid dan terapkan notasi interface & diagram ter-refaktor(Refactor class tidak "god object").simpan perubahannya pada file yang sama
+
+
+
+
+
+buatkan sebuah file mermaid dengan nama usecaseDiagram yang berisi use case diagram dengan graph TD untuk sistem akademik dengan aktor:
+Mahasiswa, Dosen, Admin Akademik, Sistem PMB.
+Use case utama: daftar kuliah, pendaftaran KRS, approve KRS, input nilai, generate transkrip. Tandai relasi include/extend jika ada. pisahkan actor dan usecase dengan kotak dan gunakan file classDiagram sebagai acuan pembuatan nya. dengan output berupa mermaid
+
+
+
+
+
+
+buatkan sebuah file mermaid dengan nama sequenceDiagram yang berisi sequence diagram untuk proses validasi KRS:
+1. Mahasiswa submit KRS
+2. Sistem cek prasyarat mata kuliah
+3. Sistem cek batas SKS (max 24)
+4. Sistem cek jadwal bentrok
+5. Jika lulus validasi, status KRS jadi 'Pending Approval'
+6. Notifikasi dikirim ke Dosen PA
+Aktor: Mahasiswa, Sistem Presensi, Database, NotificationService.
+dan buatkan juga scenario lain seperti : Proses pendaftaran mahasiswa baru (PMB). gunakan file classDiagram.mermaid dan usecaseDiagram.mermaid sebagai acuan pembuatan nya. dengan output berupa mermaid
+
+
+
+
+
+
+Sebagai senior software architect, buatkan sebuah file mermaid dengan nama sequenceDiagram yang berisi sequence diagram untuk proses validasi KRS:
+1. Mahasiswa submit KRS
+2. Sistem cek prasyarat mata kuliah
+3. Sistem cek batas SKS (max 24)
+4. Sistem cek jadwal bentrok
+5. Jika lulus validasi, status KRS jadi 'Pending Approval'
+6. Notifikasi dikirim ke Dosen PA
+Aktor: Mahasiswa, Sistem Presensi, Database, NotificationService.
+dan buatkan juga scenario lain seperti : Proses pendaftaran mahasiswa baru (PMB). gunakan file classDiagram.mermaid dan usecaseDiagram.mermaid sebagai acuan pembuatan nya. dengan output berupa mermaid
+
+isi file classDiagram.mermaid :
+```mermaid
+classDiagram
+    %% Users and hierarchy
+    class User {
+        +String userId
+        +String username
+        +String password
+        +String role
+        +login()
+        +logout()
+    }
+
+    class Mahasiswa {
+        +String nim
+        +String nama
+        +String alamat
+        +Date tanggalLahir
+        +String jurusanId
+        +viewKRS()
+        +viewKHS()
+        +viewJadwal()
+    }
+
+    class Dosen {
+        +String nidn
+        +String nama
+        +String alamat
+        +String spesialisasi
+        +inputNilai()
+        +viewJadwalMengajar()
+    }
+
+    class Admin {
+        +String adminId
+        +manageUsers()
+        +manageSystemSettings()
+    }
+
+    class CalonMahasiswa {
+        +String applicationId
+        +String nama
+        +submitApplication()
+        +trackStatus()
+    }
+
+    User <|-- Mahasiswa
+    User <|-- Dosen
+    User <|-- Admin
+    User <|-- CalonMahasiswa
+
+    %% Core classes
+    class Course {
+        +String code
+        +String name
+        +int sks
+        +String departmentId
+        +List~CoursePrerequisite~ prerequisites
+        +getPrerequisites()
+    }
+
+    class CoursePrerequisite {
+        +String id
+        +String courseCode
+        +String prerequisiteCode
+        +Boolean isMandatory
+        +checkFulfilled(Mahasiswa):boolean
+    }
+
+    class Schedule {
+        +String scheduleId
+        +String courseCode
+        +String day
+        +String startTime
+        +String endTime
+        +String room
+        +conflictsWith(Schedule):boolean
+    }
+
+    class Enrollment {
+        +String enrollmentId
+        +String studentId
+        +String courseCode
+        +String kelasId
+        +String tahunAjaran
+        +String semester
+        +String status
+        +enroll()
+        +withdraw()
+    }
+
+    class Grade {
+        +String gradeId
+        +String enrollmentId
+        +String letterGrade
+        +float numericGrade
+        +assignGrade()
+    }
+
+    class Payment {
+        +String paymentId
+        +String studentId
+        +float amount
+        +String status
+        +pay()
+        +refund()
+    }
+
+    class KRS {
+        +String krsId
+        +String mahasiswaNim
+        +String tahunAjaran
+        +String semester
+        +List~Enrollment~ enrollments
+        +addEnrollment(Enrollment)
+        +removeEnrollment(Enrollment)
+        +totalSKS():int
+    }
+
+    %% KRS service / facade (refactored - not a god object)
+    class KRSService {
+        +addCourse(Mahasiswa, Course, KRS):boolean
+        +removeCourse(Mahasiswa, Course, KRS):boolean
+        +getKRS(krsId):KRS
+    }
+
+    %% Configuration object (separates policy from manager)
+    class KRSConfig {
+        +int MAX_SKS
+        +KRSConfig(int)
+    }
+
+    %% Persistence abstractions (Dependency Inversion)
+    class IEnrollmentRepository {
+        <<interface>>
+        +findByStudentAndCourse(studentId, courseCode):Enrollment
+        +save(Enrollment)
+        +remove(Enrollment)
+        +listByKRS(krsId):List~Enrollment~
+    }
+
+    class ICourseRepository {
+        <<interface>>
+        +getCourse(code):Course
+        +getPrerequisites(code):List~CoursePrerequisite~
+    }
+
+    %% Validation service abstraction (depend on abstraction)
+    class IValidationService {
+        <<interface>>
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class ValidationResult {
+        +boolean ok
+        +List~String~ messages
+    }
+
+    class EnrollmentValidator {
+        -List~ValidationRule~ rules
+        +EnrollmentValidator(List~ValidationRule~)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class ValidationRule {
+        <<interface>>
+        +validate(Enrollment, Mahasiswa):ValidationResult
+        +getMessage():String
+    }
+
+    class MaxSksValidation {
+        -KRSConfig config
+        +MaxSksValidation(KRSConfig)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class PrerequisiteValidation {
+        -ICourseRepository courseRepo
+        +PrerequisiteValidation(ICourseRepository)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class DuplicateEnrollmentValidation {
+        -IEnrollmentRepository enrollmentRepo
+        +DuplicateEnrollmentValidation(IEnrollmentRepository)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    %% Implementations relationships (DIP)
+    ValidationRule <|.. MaxSksValidation
+    ValidationRule <|.. PrerequisiteValidation
+    ValidationRule <|.. DuplicateEnrollmentValidation
+    IValidationService <|.. EnrollmentValidator
+    EnrollmentValidator --> ValidationRule : composes
+    KRSService ..> IEnrollmentRepository : depends on
+    KRSService ..> ICourseRepository : depends on
+    KRSService ..> IValidationService : depends on
+    KRSService ..> KRSConfig : uses
+    KRSService --> KRS : operatesOn
+    MaxSksValidation ..> KRSConfig : uses
+    PrerequisiteValidation ..> ICourseRepository : uses
+    DuplicateEnrollmentValidation ..> IEnrollmentRepository : uses
+
+    %% Relationships: composition, aggregation, association
+    Mahasiswa "1" -- "0..*" KRS : memiliki
+    KRS "1" *-- "0..*" Enrollment : contains
+    Enrollment "1" --> "1" Course : for
+    Course "1" o-- "0..*" CoursePrerequisite : hasPrerequisite
+    Course "1" -- "0..*" Schedule : scheduledIn
+    Dosen "1" -- "0..*" Schedule : mengajar
+    Enrollment "1" -- "0..1" Schedule : attends
+    Enrollment "1" -- "0..1" Grade : receives
+    Mahasiswa "1" -- "0..*" Enrollment : enrolls
+    Mahasiswa "1" -- "0..*" Payment : makes
+    Payment "1" --> "1" KRS : paysFor
+
+```
+isi file usecaseDagam.mermaid:
+```mermaid
+graph TD
+  %% Actors box
+  subgraph Actors [Actors]
+    direction TB
+    MAH["Mahasiswa"]
+    DOS["Dosen"]
+    ADM["Admin Akademik"]
+    PMB["Sistem PMB"]n
+  end
+
+  %% Use cases box
+  subgraph UseCases [Use Cases]
+    direction TB
+    UC_DAFTAR((Daftar Kuliah))
+    UC_KRS((Pendaftaran KRS))
+    UC_APPROVE((Approve KRS))
+    UC_INPUT_NILAI((Input Nilai))
+    UC_GENERATE((Generate Transkrip))
+
+    %% supporting/atomic usecases
+    UC_VALIDATE((Validate Enrollment))
+    UC_CHECK_PREREQ((Check Prerequisites))
+    UC_CHECK_MAXSKS((Check Max SKS))
+    UC_CHECK_DUP((Prevent Duplicate Enrollment))
+    UC_AGG_GRADES((Aggregate Grades))
+  end
+
+  %% Actor associations
+  MAH --> UC_DAFTAR
+  MAH --> UC_KRS
+  DOS --> UC_INPUT_NILAI
+  ADM --> UC_APPROVE
+  ADM --> UC_GENERATE
+  PMB -.-> UC_KRS
+
+  %% include / extend relationships
+  UC_KRS --|include|--> UC_DAFTAR
+  UC_KRS --|include|--> UC_VALIDATE
+  UC_VALIDATE --|include|--> UC_CHECK_PREREQ
+  UC_VALIDATE --|include|--> UC_CHECK_MAXSKS
+  UC_VALIDATE --|include|--> UC_CHECK_DUP
+
+  UC_APPROVE -.->|extend| UC_KRS
+
+  UC_INPUT_NILAI --|include|--> UC_AGG_GRADES
+  UC_GENERATE --|include|--> UC_AGG_GRADES
+  UC_GENERATE --|include|--> UC_INPUT_NILAI
+
+  %% Notes on actors (separated visually by boxes)
+  class ActorsBox fill:#f9f,stroke:#333,stroke-width:1px
+  class UseCasesBox fill:#fff,stroke:#333,stroke-width:1px
+
+```
+
+

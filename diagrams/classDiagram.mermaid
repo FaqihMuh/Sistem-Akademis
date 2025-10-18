@@ -1,0 +1,216 @@
+```mermaid
+classDiagram
+    %% Users and hierarchy
+    class User {
+        +String userId
+        +String username
+        +String password
+        +String role
+        +login()
+        +logout()
+    }
+
+    class Mahasiswa {
+        +String nim
+        +String nama
+        +String alamat
+        +Date tanggalLahir
+        +String jurusanId
+        +viewKRS()
+        +viewKHS()
+        +viewJadwal()
+    }
+
+    class Dosen {
+        +String nidn
+        +String nama
+        +String alamat
+        +String spesialisasi
+        +inputNilai()
+        +viewJadwalMengajar()
+    }
+
+    class Admin {
+        +String adminId
+        +manageUsers()
+        +manageSystemSettings()
+    }
+
+    class CalonMahasiswa {
+        +String applicationId
+        +String nama
+        +submitApplication()
+        +trackStatus()
+    }
+
+    User <|-- Mahasiswa
+    User <|-- Dosen
+    User <|-- Admin
+    User <|-- CalonMahasiswa
+
+    %% Core classes
+    class Course {
+        +String code
+        +String name
+        +int sks
+        +String departmentId
+        +List~CoursePrerequisite~ prerequisites
+        +getPrerequisites()
+    }
+
+    class CoursePrerequisite {
+        +String id
+        +String courseCode
+        +String prerequisiteCode
+        +Boolean isMandatory
+        +checkFulfilled(Mahasiswa):boolean
+    }
+
+    class Schedule {
+        +String scheduleId
+        +String courseCode
+        +String day
+        +String startTime
+        +String endTime
+        +String room
+        +conflictsWith(Schedule):boolean
+    }
+
+    class Enrollment {
+        +String enrollmentId
+        +String studentId
+        +String courseCode
+        +String kelasId
+        +String tahunAjaran
+        +String semester
+        +String status
+        +enroll()
+        +withdraw()
+    }
+
+    class Grade {
+        +String gradeId
+        +String enrollmentId
+        +String letterGrade
+        +float numericGrade
+        +assignGrade()
+    }
+
+    class Payment {
+        +String paymentId
+        +String studentId
+        +float amount
+        +String status
+        +pay()
+        +refund()
+    }
+
+    class KRS {
+        +String krsId
+        +String mahasiswaNim
+        +String tahunAjaran
+        +String semester
+        +List~Enrollment~ enrollments
+        +addEnrollment(Enrollment)
+        +removeEnrollment(Enrollment)
+        +totalSKS():int
+    }
+
+    %% KRS service / facade (refactored - not a god object)
+    class KRSService {
+        +addCourse(Mahasiswa, Course, KRS):boolean
+        +removeCourse(Mahasiswa, Course, KRS):boolean
+        +getKRS(krsId):KRS
+    }
+
+    %% Configuration object (separates policy from manager)
+    class KRSConfig {
+        +int MAX_SKS
+        +KRSConfig(int)
+    }
+
+    %% Persistence abstractions (Dependency Inversion)
+    class IEnrollmentRepository {
+        <<interface>>
+        +findByStudentAndCourse(studentId, courseCode):Enrollment
+        +save(Enrollment)
+        +remove(Enrollment)
+        +listByKRS(krsId):List~Enrollment~
+    }
+
+    class ICourseRepository {
+        <<interface>>
+        +getCourse(code):Course
+        +getPrerequisites(code):List~CoursePrerequisite~
+    }
+
+    %% Validation service abstraction (depend on abstraction)
+    class IValidationService {
+        <<interface>>
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class ValidationResult {
+        +boolean ok
+        +List~String~ messages
+    }
+
+    class EnrollmentValidator {
+        -List~ValidationRule~ rules
+        +EnrollmentValidator(List~ValidationRule~)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class ValidationRule {
+        <<interface>>
+        +validate(Enrollment, Mahasiswa):ValidationResult
+        +getMessage():String
+    }
+
+    class MaxSksValidation {
+        -KRSConfig config
+        +MaxSksValidation(KRSConfig)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class PrerequisiteValidation {
+        -ICourseRepository courseRepo
+        +PrerequisiteValidation(ICourseRepository)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    class DuplicateEnrollmentValidation {
+        -IEnrollmentRepository enrollmentRepo
+        +DuplicateEnrollmentValidation(IEnrollmentRepository)
+        +validate(Enrollment, Mahasiswa):ValidationResult
+    }
+
+    %% Implementations relationships (DIP)
+    ValidationRule <|.. MaxSksValidation
+    ValidationRule <|.. PrerequisiteValidation
+    ValidationRule <|.. DuplicateEnrollmentValidation
+    IValidationService <|.. EnrollmentValidator
+    EnrollmentValidator --> ValidationRule : composes
+    KRSService ..> IEnrollmentRepository : depends on
+    KRSService ..> ICourseRepository : depends on
+    KRSService ..> IValidationService : depends on
+    KRSService ..> KRSConfig : uses
+    KRSService --> KRS : operatesOn
+    MaxSksValidation ..> KRSConfig : uses
+    PrerequisiteValidation ..> ICourseRepository : uses
+    DuplicateEnrollmentValidation ..> IEnrollmentRepository : uses
+
+    %% Relationships: composition, aggregation, association
+    Mahasiswa "1" -- "0..*" KRS : memiliki
+    KRS "1" *-- "0..*" Enrollment : contains
+    Enrollment "1" --> "1" Course : for
+    Course "1" o-- "0..*" CoursePrerequisite : hasPrerequisite
+    Course "1" -- "0..*" Schedule : scheduledIn
+    Dosen "1" -- "0..*" Schedule : mengajar
+    Enrollment "1" -- "0..1" Schedule : attends
+    Enrollment "1" -- "0..1" Grade : receives
+    Mahasiswa "1" -- "0..*" Enrollment : enrolls
+    Mahasiswa "1" -- "0..*" Payment : makes
+    Payment "1" --> "1" KRS : paysFor
+
+```

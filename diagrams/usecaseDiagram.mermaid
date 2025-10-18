@@ -1,0 +1,54 @@
+```mermaid
+graph TD
+  %% Actors box
+  subgraph Actors [Actors]
+    direction TB
+    MAH["Mahasiswa"]
+    DOS["Dosen"]
+    ADM["Admin Akademik"]
+    PMB["Sistem PMB"]n
+  end
+
+  %% Use cases box
+  subgraph UseCases [Use Cases]
+    direction TB
+    UC_DAFTAR((Daftar Kuliah))
+    UC_KRS((Pendaftaran KRS))
+    UC_APPROVE((Approve KRS))
+    UC_INPUT_NILAI((Input Nilai))
+    UC_GENERATE((Generate Transkrip))
+
+    %% supporting/atomic usecases
+    UC_VALIDATE((Validate Enrollment))
+    UC_CHECK_PREREQ((Check Prerequisites))
+    UC_CHECK_MAXSKS((Check Max SKS))
+    UC_CHECK_DUP((Prevent Duplicate Enrollment))
+    UC_AGG_GRADES((Aggregate Grades))
+  end
+
+  %% Actor associations
+  MAH --> UC_DAFTAR
+  MAH --> UC_KRS
+  DOS --> UC_INPUT_NILAI
+  ADM --> UC_APPROVE
+  ADM --> UC_GENERATE
+  PMB -.-> UC_KRS
+
+  %% include / extend relationships
+  UC_KRS --|include|--> UC_DAFTAR
+  UC_KRS --|include|--> UC_VALIDATE
+  UC_VALIDATE --|include|--> UC_CHECK_PREREQ
+  UC_VALIDATE --|include|--> UC_CHECK_MAXSKS
+  UC_VALIDATE --|include|--> UC_CHECK_DUP
+
+  UC_APPROVE -.->|extend| UC_KRS
+
+  UC_INPUT_NILAI --|include|--> UC_AGG_GRADES
+  UC_GENERATE --|include|--> UC_AGG_GRADES
+  UC_GENERATE --|include|--> UC_INPUT_NILAI
+
+  %% Notes on actors (separated visually by boxes)
+  class ActorsBox fill:#f9f,stroke:#333,stroke-width:1px
+  class UseCasesBox fill:#fff,stroke:#333,stroke-width:1px
+
+```

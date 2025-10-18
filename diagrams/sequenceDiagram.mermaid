@@ -1,0 +1,56 @@
+%% ================================
+%% Sequence Diagram - KRS & PMB
+%% ================================
+sequenceDiagram
+%% ----------------------------
+    %% Sub-sequence 1: PMB
+    %% ----------------------------
+    autonumber
+    actor CalonMahasiswa
+    participant SistemPMB as Sistem PMB
+    participant DB as Database
+    participant Notif as NotificationService
+
+    Note over CalonMahasiswa,SistemPMB: Proses Pendaftaran Mahasiswa Baru (PMB)
+    CalonMahasiswa->>SistemPMB: Submit Formulir Pendaftaran
+    SistemPMB->>DB: Simpan Data Calon Mahasiswa
+    DB-->>SistemPMB: Data Disimpan
+
+    SistemPMB->>Notif: Kirim Notifikasi Status Pendaftaran
+    Notif-->>CalonMahasiswa: Notifikasi "Pendaftaran Berhasil"
+
+    CalonMahasiswa->>SistemPMB: Cek Status Pendaftaran
+    SistemPMB->>DB: Ambil Status Pendaftaran
+    DB-->>SistemPMB: Status Pendaftaran (Seleksi / Lulus / Ditolak)
+    SistemPMB-->>CalonMahasiswa: Tampilkan Status
+
+    %% ----------------------------
+    %% Sub-sequence 2: Validasi KRS
+    %% ----------------------------
+    autonumber
+    actor Mahasiswa
+    participant SistemPresensi as Sistem Presensi
+    participant DB as Database
+    participant Notif as NotificationService
+    participant Dosen as Dosen PA
+
+    Note over Mahasiswa,SistemPresensi: Proses Validasi KRS
+    Mahasiswa->>SistemPresensi: Submit KRS
+    SistemPresensi->>DB: Cek Prasyarat Mata Kuliah
+    DB-->>SistemPresensi: Hasil Cek Prasyarat
+
+    SistemPresensi->>DB: Cek Batas SKS (max 24)
+    DB-->>SistemPresensi: Hasil Cek SKS
+
+    SistemPresensi->>DB: Cek Jadwal Bentrok
+    DB-->>SistemPresensi: Hasil Cek Jadwal
+
+    alt Validasi Gagal
+        SistemPresensi-->>Mahasiswa: Tampilkan Error Validasi
+    else Validasi Lulus
+        SistemPresensi->>DB: Update Status KRS = 'Pending Approval'
+        SistemPresensi->>Notif: Kirim Notifikasi ke Dosen PA
+        Notif-->>Dosen: Notifikasi Approval KRS
+    end
+
+    
