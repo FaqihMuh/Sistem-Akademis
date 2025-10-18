@@ -339,4 +339,58 @@ graph TD
 
 ```
 
+####################################################################################################
+v.2
+####################################################################################################
+buat sistem PMB berdasarkan class diagram berikut [paste diagram Mermaid].hasilkan model SQLAlchemy + migrasi Alembic sesuai spesifikasi berikut:
+Desain skema database PMB untuk sistem akademik:
+- Tabel calon_mahasiswa: id, nama_lengkap, email (unique), phone, tanggal_lahir, alamat, program_studi_id, jalur_masuk (SNBP/SNBT/Mandiri), status (pending/approved/rejected), created_at, approved_at.
+- Tabel program_studi: id, kode (3 char), nama, fakultas.
+Tambahkan validasi:
+- email harus unik dan berformat valid.
+- phone mengikuti format Indonesia (mulai dari 08 dan 10–13 digit).
+Buat model SQLAlchemy beserta Alembic migration script dan constraint yang sesuai.
+Gunakan Python 3.11 dan FastAPI.
+
+
+Buat endpoint FastAPI untuk modul PMB:
+1. POST /api/pmb/register → menerima JSON calon mahasiswa, validasi input, status default = 'pending'.
+2. PUT /api/pmb/approve/{id} → ubah status ke 'approved', generate NIM format [tahun][kode_prodi][running number], return NIM.
+3. GET /api/pmb/status/{id} → tampilkan data pendaftar dan statusnya.
+4. GET /api/pmb/stats → jumlah pendaftar per jalur_masuk.
+Tambahkan error handling (404 jika tidak ditemukan, 400 untuk input tidak valid, 409 untuk duplikasi).
+Gunakan dependency injection untuk DB session.
+
+Buat function generate_nim yang thread-safe di Python menggunakan SQLAlchemy.
+Format NIM: [Tahun:4][Kode Prodi:3][Running Number:4].
+Contoh: 2025001-0001 untuk Teknik Informatika, 2025001-0001 untuk Sistem Informasi
+Syarat:
+- Jangan generate ulang jika calon_mahasiswa sudah punya NIM.
+- Running number diambil berdasarkan jumlah mahasiswa di program studi pada tahun tersebut.
+- Tangani race condition dengan database locking (gunakan transaction atau SELECT FOR UPDATE).
+Buat fungsi di file crud.py bernama generate_nim.
+
+Buat unit test dengan pytest untuk modul PMB menggunakan fixture database SQLite in-memory.
+Uji kasus:
+1. test_register_success → data valid, return 201.
+2. test_register_duplicate_email → return 409 conflict.
+3. test_approve_generate_nim → format NIM sesuai dan sequential.
+4. test_approve_idempotent → approve 2x tidak generate NIM baru.
+5. test_invalid_phone_format → return 400.
+Tambahkan pytest fixture untuk setup dan teardown database.
+
+Baca seluruh struktur project saya (kode di folder app/ dan tests/) dan identifikasi semua import eksternal (library pihak ketiga).
+
+update file requirements.txt yang lengkap dan akurat, dengan versi stabil terbaru yang kompatibel dengan Python 3.11.
+
+Aturan:
+- Cantumkan hanya library eksternal (jangan masukkan modul bawaan Python seperti datetime, os, re, dll).
+- Urutkan berdasarkan abjad.
+- Gunakan versi stabil (misal FastAPI, SQLAlchemy, Alembic, Uvicorn, pytest, PyMySQL).
+- Jika library database opsional (misal MySQL atau PostgreSQL), sertakan tapi beri komentar opsional di bawahnya.
+- Output hanya isi file requirements.txt (tanpa penjelasan tambahan).
+
+
+
+fix this error : [paste pesan error]
 
