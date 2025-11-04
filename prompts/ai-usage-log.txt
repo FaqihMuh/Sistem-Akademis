@@ -391,6 +391,126 @@ Aturan:
 - Output hanya isi file requirements.txt (tanpa penjelasan tambahan).
 
 
+####################################################################################################
+v.3
+####################################################################################################
+1.
+Tambahkan modul baru bernama `krs_system` yang akan menggunakan database yang sama dengan modul PMB (gunakan Base dan Session dari app.database).
+
+Buat model SQLAlchemy untuk sistem KRS dengan tabel berikut:
+- matakuliah: id, kode (unique), nama, sks, semester, hari, jam_mulai, jam_selesai
+- prerequisite: id, matakuliah_id, prerequisite_id (relasi self-reference)
+- krs: id, nim, semester, status (Enum: DRAFT, SUBMITTED, APPROVED, REVISION), dosen_pa_id (nullable)
+- krs_detail: id, krs_id, matakuliah_id
+
+Gunakan relasi:
+- krs_detail.krs_id → krs.id
+- krs_detail.matakuliah_id → matakuliah.id
+- prerequisite.matakuliah_id dan prerequisite.prerequisite_id → matakuliah.id
+
+Tambahkan file migration Alembic untuk skema ini.
+Gunakan versi Python, FastAPI, dan SQLAlchemy yang sesuai
+
+
+
+
+2.
+Buat file untuk mengelola state KRS.
+Buat enum `KRSStatus` dengan nilai: DRAFT, SUBMITTED, APPROVED, REVISION.
+
+Tambahkan fungsi transition(current_status, action) yang mengatur transisi valid:
+- DRAFT → SUBMITTED (aksi: submit)
+- SUBMITTED → APPROVED (aksi: approve)
+- SUBMITTED → REVISION (aksi: reject)
+- REVISION → SUBMITTED (aksi: resubmit)
+Transisi lain harus raise ValueError("Transisi tidak valid dari {status} dengan aksi {action}")
+
+
+
+
+3.
+Buat file untuk validasi KRS dengan pola Chain of Responsibility.
+Buat abstract class `Validator` dengan method `validate(krs_id: int, db: Session) -> ValidationResult`.
+`ValidationResult` berisi: { success: bool, message: str }.
+
+Implementasikan empat validator:
+1. SKSValidator → total SKS ≤ 24
+2. PrerequisiteValidator → semua prasyarat matakuliah sudah lulus (nilai >= C)
+3. ConflictValidator → tidak boleh bentrok hari + jam
+4. DuplicateValidator → tidak boleh mata kuliah sama diambil dua kali
+
+Tambahkan fungsi `run_validations(krs_id, db)` yang menjalankan semua validator secara berurutan dan berhenti saat ada yang gagal.
+
+
+
+
+
+4.
+Buat file untuk mengelola logika KRS.
+
+Tambahkan fungsi:
+- add_course(nim, kode_mk, semester, db)
+- remove_course(nim, kode_mk, db)
+- validate_krs(nim, db)
+- submit_krs(nim, db)
+- approve_krs(nim, dosen_pa_id, db)
+
+Gunakan transaksi database (`with db.begin():`) untuk menjaga konsistensi.
+Gunakan `run_validations()` sebelum submit KRS.
+Gunakan `transition()` dari state_machine untuk perubahan status.
+
+
+
+
+
+5.
+Buat file yang berisi endpoint FastAPI berikut:
+
+1. POST /api/krs/{nim}/add → tambah mata kuliah
+2. DELETE /api/krs/{nim}/remove → hapus mata kuliah
+3. POST /api/krs/{nim}/submit → submit KRS
+4. POST /api/krs/{nim}/approve → approve KRS
+5. GET /api/krs/{nim} → tampilkan detail KRS dan status
+
+Gunakan dependency database session dari app.database.
+Gunakan model dari modul KRS dan modul PMB (untuk validasi NIM).
+Tambahkan error handling (404 jika mahasiswa/KRS tidak ditemukan, 400 untuk validasi gagal).
+
+
+
+
+
+
+6.
+Buat file `main.py` di root project agar menjadi entry point gabungan untuk seluruh sistem akademik.
+
+Spesifikasi:
+- Inisialisasi satu FastAPI app bernama `app`
+- Tambahkan middleware CORS untuk akses frontend
+- Tambahkan router:
+  app.include_router(pmb_router, prefix="/api/pmb", tags=["PMB"])
+  app.include_router(krs_router, prefix="/api/krs", tags=["KRS"])
+- Endpoint root ("/") mengembalikan JSON:
+  {"message": "Sistem Akademis API (PMB + KRS) is running"}
+
+Pastikan database Base dan Session digunakan bersama (app.database). dan perbaharui endpoint "/docs" agar swagger UI bisa digunakan untuk modul PMB dan KRS
+
+
+
+
+
+7.
+Buat file untuk menguji modul KRS menggunakan pytest dan SQLite in-memory.
+
+Tambahkan pengujian:
+1. test_add_course_success → tambah MK valid
+2. test_add_course_duplicate → gagal karena double enrollment
+3. test_add_course_conflict → gagal karena bentrok jadwal
+4. test_add_course_unmet_prerequisite → gagal karena prasyarat belum terpenuhi
+5. test_submit_and_approve_flow → validasi transisi state machine
+6. property-based test: total SKS tidak melebihi 24 menggunakan hypothesis
+
+
 
 fix this error : [paste pesan error]
 
