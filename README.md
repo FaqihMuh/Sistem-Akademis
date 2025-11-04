@@ -1,5 +1,5 @@
 NEW UPDATE: 
-PMB module!
+KRS module!
 ###
 activate venv: 
 python -m venv .venv
