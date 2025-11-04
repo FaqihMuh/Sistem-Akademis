@@ -63,7 +63,8 @@ def generate_nim(db: Session, calon_mahasiswa_id: int) -> str:
     # Generate NIM in format: [Tahun:4][Kode Prodi:3][Running Number:4]
     nim = f"{current_year}{program_studi.kode}{running_number}"
     
-    # Update the student's status and approved_at timestamp
+    # Set the NIM and update the student's status and approved_at timestamp
+    calon_mahasiswa.nim = nim
     calon_mahasiswa.status = models.StatusEnum.APPROVED
     calon_mahasiswa.approved_at = datetime.now()
     

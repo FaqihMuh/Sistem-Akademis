@@ -1,0 +1,4 @@
+# file: E:\oop4\krs_system\validators.py
+# hypothesis_version: 6.145.0
+
+['hari', 'id', 'jam_mulai', 'jam_selesai', 'kode', 'nama']

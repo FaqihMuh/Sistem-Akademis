@@ -1,0 +1,4 @@
+# file: E:\oop4\pmb_system\database.py
+# hypothesis_version: 6.145.0
+
+['1', 'DATABASE_URL', 'TESTING', 'check_same_thread', 'sqlite', 'sqlite:///:memory:', 'true', 'yes']

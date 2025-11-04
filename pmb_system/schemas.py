@@ -41,6 +41,7 @@ class CalonMahasiswaResponse(CalonMahasiswaBase):
     status: Status
     created_at: datetime
     approved_at: Optional[datetime] = None
+    nim: Optional[str] = None
 
     class Config:
         from_attributes = True

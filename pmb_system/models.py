@@ -56,6 +56,7 @@ class CalonMahasiswa(Base):
     status = Column(Enum(StatusEnum), default=StatusEnum.PENDING)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     approved_at = Column(DateTime, nullable=True)
+    nim = Column(String(255), nullable=True)  # NIM column, default is NULL
     
     # Relationship to program_studi
     program_studi = relationship("ProgramStudi", back_populates="calon_mahasiswa")

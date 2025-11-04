@@ -118,7 +118,7 @@ def register_calon_mahasiswa(
     return db_calon_mahasiswa
 
 # 2. PUT /api/pmb/approve/{id} → ubah status ke 'approved', generate NIM format [tahun][kode_prodi][running number], return NIM.
-@app.put("/api/pmb/approve/{id}", response_model=dict)
+@app.put("/api/pmb/approve/{id}", response_model=schemas.CalonMahasiswaResponse)
 def approve_calon_mahasiswa(
     id: int,
     db: Session = Depends(get_db)
@@ -139,6 +139,7 @@ def approve_calon_mahasiswa(
         )
     
     # Generate NIM using the thread-safe function
+    # This function handles all the approval logic, including status update and NIM assignment
     try:
         nim = crud.generate_nim(db, id)
     except ValueError as e:
@@ -147,14 +148,10 @@ def approve_calon_mahasiswa(
             detail=str(e)
         )
     
-    # Update the status and approved_at timestamp
-    calon_mahasiswa.status = models.StatusEnum.APPROVED
-    calon_mahasiswa.approved_at = datetime.now()
+    # The calon_mahasiswa object has been refreshed by the generate_nim function
+    # It now contains the updated status, approved_at, and nim
     
-    db.commit()
-    db.refresh(calon_mahasiswa)
-    
-    return {"nim": nim, "message": "Calon mahasiswa approved successfully"}
+    return calon_mahasiswa
 
 # 3. GET /api/pmb/status/{id} → tampilkan data pendaftar dan statusnya.
 @app.get("/api/pmb/status/{id}", response_model=schemas.CalonMahasiswaResponse)

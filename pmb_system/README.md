@@ -54,10 +54,12 @@ Sistem ini dirancang untuk mengelola pendaftaran calon mahasiswa baru dengan ber
 - `PUT /api/pmb/approve/{id}` - Menyetujui calon mahasiswa, menghasilkan NIM dengan format [tahun][kode_prodi][nomor_urut]
 - `GET /api/pmb/status/{id}` - Menampilkan data pendaftar dan statusnya
 - `GET /api/pmb/stats` - Menampilkan jumlah pendaftar per jalur_masuk
+- `POST /api/pmb/program-studi` - Membuat program studi baru
+- `GET /api/pmb/program-studi` - Mendapatkan semua program studi
+- `GET /api/pmb/program-studi/{id}` - Mendapatkan program studi berdasarkan ID
 
 ### Legacy Endpoints
 
-- `POST /program-studi/` - Membuat program studi baru
 - `POST /calon-mahasiswa/` - Membuat pendaftaran calon mahasiswa baru
 
 ## Teknologi
