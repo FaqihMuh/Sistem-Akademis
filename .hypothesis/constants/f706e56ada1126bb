@@ -1,0 +1,4 @@
+# file: E:\oop5\krs_system\models.py
+# hypothesis_version: 6.145.0
+
+[255, 'KRS', 'KRSDetail', 'Matakuliah', 'Prerequisite', 'all, delete-orphan', 'krs', 'krs.id', 'krs_detail', 'krs_details', 'matakuliah', 'matakuliah.id', 'prerequisite', 'prerequisite_for', 'prerequisites']

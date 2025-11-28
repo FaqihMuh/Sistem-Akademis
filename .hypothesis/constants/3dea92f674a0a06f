@@ -1,0 +1,4 @@
+# file: E:\oop5\krs_system\state_manager.py
+# hypothesis_version: 6.145.0
+
+['__main__', 'approve', 'reject', 'resubmit', 'submit']

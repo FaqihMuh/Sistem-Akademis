@@ -21,6 +21,7 @@ class Matakuliah(Base):
     
     # Relationships
     krs_details = relationship("KRSDetail", back_populates="matakuliah")
+    # jadwal_kelas = relationship("schedule_system.models.JadwalKelas", back_populates="matakuliah")  # Back reference from schedule system
     prerequisites = relationship(
         "Prerequisite",
         foreign_keys="Prerequisite.matakuliah_id",

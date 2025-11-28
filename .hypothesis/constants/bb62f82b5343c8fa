@@ -1,0 +1,4 @@
+# file: E:\oop5\krs_system\enums.py
+# hypothesis_version: 6.145.0
+
+['APPROVED', 'DRAFT', 'REVISION', 'SUBMITTED']

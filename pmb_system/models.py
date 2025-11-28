@@ -60,6 +60,8 @@ class CalonMahasiswa(Base):
     
     # Relationship to program_studi
     program_studi = relationship("ProgramStudi", back_populates="calon_mahasiswa")
+    # Back reference from schedule system - using string to avoid circular import in tests
+    # jadwal_mahasiswa = relationship("schedule_system.models.JadwalMahasiswa", back_populates="mahasiswa")
     
     # Application-level validation only (database constraints vary by DB engine)
     # For PostgreSQL, use the migration file to add constraints
