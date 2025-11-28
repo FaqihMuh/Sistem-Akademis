@@ -394,3 +394,308 @@ Aturan:
 
 fix this error : [paste pesan error]
 
+
+
+#######################################################
+
+tambahkan modul baru bernama schedule_system ke dalam project ini.
+Modul ini harus berada di folder schedule_system/, memanfaatkan database shared dari pmb_local.db, dan mengikuti struktur modul sebelumnya (PMB dan KRS).
+
+
+
+
+Buatkan file model SQLAlchemy berikut di folder schedule_system/models.py:
+Tabel:
+
+ruangan
+
+ -id (PK)
+
+ -kode (unique)
+
+ -nama
+
+ -kapasitas
+
+jadwal
+
+ -id (PK)
+
+ -matakuliah_id (FK → matakuliah.id)
+
+ -ruangan_id (FK → ruangan.id)
+
+ -dosen_id (int, nullable)
+
+ -hari (Enum: Senin–Sabtu)
+
+ -jam_mulai (Time)
+
+ -jam_selesai (Time)
+
+Relationship:
+
+ -jadwal → matakuliah (one-to-many)
+
+ -jadwal → ruangan (one-to-many)
+
+Tambahkan Alembic migration otomatis untuk ketiga tabel tersebut.
+
+
+
+
+
+
+Buat file schedule_system/services.py berisi:
+
+A. CRUD jadwal
+
+create_schedule()
+
+update_schedule()
+
+delete_schedule()
+
+Semua memakai transaksi:
+
+with db.begin():
+
+B. DETEKSI BENTROK 3 DIMENSI
+
+Buat fungsi bernama:
+
+detect_schedule_conflicts(jadwal_list) → list[ConflictResult]
+
+Input jadwal_list berisi elemen:
+
+{
+  id,
+  hari,
+  jam_mulai,
+  jam_selesai,
+  ruangan_id,
+  dosen_id
+}
+
+
+Output list of conflict:
+
+{
+   "type": "room_conflict" | "lecturer_conflict" | "time_overlap",
+   "schedule_1": {},
+   "schedule_2": {}
+}
+
+Algoritma (WAJIB QWEN PATUHI):
+
+Untuk setiap pair jadwal (i,j):
+
+1. Room conflict
+
+ -hari sama
+
+ -waktu overlap
+
+ -ruangan sama
+
+2. Lecturer conflict
+
+ -hari sama
+
+ -waktu overlap
+
+ -dosen sama
+
+Time overlap only
+
+ -hari sama
+
+ -jam_overlap == true
+
+Optimisasi: Gunakan struktur interval tree untuk mengecek overlap time.
+
+C. CAPACITY CHECK
+
+Tambahkan fungsi:
+
+check_capacity(jadwal, db)
+
+Kriteria:
+
+ -total mahasiswa yang mengambil MK (query dari KRS)
+
+ -harus <= kapasitas ruangan
+Jika melebihi → return False + alas an
+
+
+
+
+
+Buat folder schedule_system/observer/ dengan file:
+
+subject.py
+class ScheduleSubject:
+    observers = []
+    attach()
+    detach()
+    notify(event_type, schedule_data)
+
+
+observers.py
+
+Tiga observer:
+
+1. StudentObserver
+
+2. LecturerObserver
+
+3. AdminObserver
+
+Masing-masing update():
+
+ -kirim notifikasi via log (simulasi Email/SMS/Push)
+
+ -semua notifikasi dicetak dengan format:
+
+[NOTIFY] <role> menerima event <event_type> untuk jadwal <id>
+
+Trigger Notifikasi
+
+Di services create/update/delete jadwal, panggil:
+
+subject.notify("SCHEDULE_CHANGED", jadwal_data)
+
+
+
+
+
+
+Buat fungsi:
+
+invalidate_affected_krs(jadwal, db)
+
+Ketentuan:
+
+ -Jika jadwal berubah (ruangan, dosen, jam), maka:
+
+ 1. Cari seluruh KRS yang memiliki matakuliah tersebut
+
+2. Set status KRS menjadi "REVISION"
+
+3. Simpan ke DB
+
+Panggil fungsi ini otomatis ketika jadwal di-update.
+
+
+
+
+
+
+Buat folder schedule_system/endpoints.py berisi:
+
+Endpoint:
+
+1. POST /api/schedule/create
+
+2. PUT /api/schedule/{id}/update
+
+3. DELETE /api/schedule/{id}/delete
+
+4. GET /api/schedule/conflicts
+
+5. response: semua jadwal bentrok
+
+6. GET /api/schedule/rooms
+
+7. GET /api/schedule/{id}
+
+Gunakan:
+
+router = APIRouter(prefix="/api/schedule", tags=["Schedule"])
+kumpulkan endpoint nya pada swagger UI di /docs Bersama modul PMB dan KRS
+
+
+
+
+
+
+Buat file schedule_system/ai_rescheduler.py berisi:
+
+Fungsi:
+def suggest_alternative_slots(conflict, available_slots, db):
+
+
+Qwen harus membangun logika:
+
+Kriteria saran:
+
+1. kapasitas ruangan cukup
+
+2. tidak bentrok dengan jadwal dosen
+
+3. minimal disruption untuk mahasiswa
+
+	-prioritas jam pagi → siang → sore
+
+4. hasilnya list 3 rekomendasi:
+
+[
+ {hari, jam_mulai, jam_selesai, ruangan, reason},
+ ...
+]
+
+
+
+
+
+
+
+
+
+Buat folder schedule_system/tests/ dengan pytest:
+
+Test wajib:
+
+1. test_detect_conflict_room
+
+2. test_detect_conflict_lecturer
+
+3. test_capacity_check
+
+4. test_notification_trigger
+
+5. test_invalidate_krs
+
+6. test_ai_rescheduler
+
+Gunakan SQLite in-memory.
+
+Dokumentasi:
+
+ -Buat docs/schedule_system.md berisi:
+
+ -arsitektur
+
+ -penjelasan conflict detection
+
+ -observer pattern sequence diagram
+
+ -contoh API usage
+
+ -AI rescheduler logic
+
+Gunakan mermaid untuk sequence diagram.
+
+
+
+
+
+
+update main.py dan pastikan modul berjalan bersama PMB dan KRS. pastikan juga :
+1. Sistem mendeteksi semua bentrok 3D
+2. Notifikasi observer muncul di log
+3. Sequence diagram tersedia
+4. Admin mendapat jadwal alternatif dari AI
+
+Seluruh kode harus ditulis lengkap, benar, dapat dijalankan, dan rapi — tanpa perlu saya edit manual.
+
