@@ -1,5 +1,5 @@
 NEW UPDATE: 
-PMB module!
+Schedule module!
 ###
 activate venv: 
 python -m venv .venv
