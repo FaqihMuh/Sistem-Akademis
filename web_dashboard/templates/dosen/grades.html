@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Input Nilai - Dashboard Dosen</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+        }
+        .table th {
+            background-color: #495057;
+            color: white;
+        }
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="fas fa-graduation-cap me-2"></i>Modul Nilai & Transkrip</h1>
+                    <p class="mb-0">Dashboard Dosen</p>
+                </div>
+                <div class="col-auto">
+                    <a href="/dashboard/dosen" class="btn btn-light">
+                        <i class="fas fa-arrow-left me-1"></i> Kembali
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Input Nilai Mahasiswa</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="gradeForm">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label for="matakuliah_id" class="form-label">Mata Kuliah</label>
+                                    <select class="form-select" id="matakuliah_id" required>
+                                        <option value="">Pilih Mata Kuliah</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="semester" class="form-label">Semester</label>
+                                    <input type="text" class="form-control" id="semester" required placeholder="Contoh: 2023/2024-1">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="dosen_id" class="form-label">ID Dosen</label>
+                                    <input type="number" class="form-control" id="dosen_id" readonly>
+                                </div>
+                            </div>
+                            
+                            <div class="row mt-3">
+                                <div class="col-md-6">
+                                    <label for="nim" class="form-label">NIM Mahasiswa</label>
+                                    <input type="text" class="form-control" id="nim" required placeholder="Contoh: 2023001">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="nilai_huruf" class="form-label">Nilai Huruf</label>
+                                    <select class="form-select" id="nilai_huruf" required>
+                                        <option value="">Pilih Nilai</option>
+                                        <option value="A">A (4.0)</option>
+                                        <option value="B">B (3.0)</option>
+                                        <option value="C">C (2.0)</option>
+                                        <option value="D">D (1.0)</option>
+                                        <option value="E">E (0.0)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="sks" class="form-label">SKS</label>
+                                    <input type="number" class="form-control" id="sks" required min="1" max="6">
+                                </div>
+                            </div>
+                            
+                            <div class="row mt-3">
+                                <div class="col-md-6">
+                                    <label for="presensi" class="form-label">Presensi (%)</label>
+                                    <input type="number" class="form-control" id="presensi" required min="0" max="100" value="100" step="0.1">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="searchButton" class="form-label">&nbsp;</label>
+                                    <button type="button" class="btn btn-primary w-100" id="searchButton">
+                                        <i class="fas fa-search me-2"></i>Cari Mahasiswa
+                                    </button>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="historyButton" class="form-label">&nbsp;</label>
+                                    <a href="/dashboard/dosen/grade_history" class="btn btn-info w-100">
+                                        <i class="fas fa-history me-2"></i>Lihat Histori
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="mt-4">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-save me-2"></i>Simpan Nilai
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Nilai Mahasiswa dalam Mata Kuliah</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="courseFilter" class="form-label">Filter Mata Kuliah</label>
+                                <select class="form-select" id="courseFilter">
+                                    <option value="">Semua Mata Kuliah</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="studentFilter" class="form-label">Filter NIM</label>
+                                <input type="text" class="form-control" id="studentFilter" placeholder="Masukkan NIM...">
+                            </div>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>NIM</th>
+                                        <th>Nama Mahasiswa</th>
+                                        <th>Kode MK</th>
+                                        <th>Nama MK</th>
+                                        <th>Nilai Huruf</th>
+                                        <th>Nilai Angka</th>
+                                        <th>Presensi</th>
+                                        <th>SKS</th>
+                                        <th>Semester</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gradesTableBody">
+                                    <!-- Data will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Grade Modal -->
+    <div class="modal fade" id="editGradeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Nilai</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editGradeForm">
+                        <input type="hidden" id="editGradeId">
+                        <div class="mb-3">
+                            <label for="editNilaiHuruf" class="form-label">Nilai Huruf</label>
+                            <select class="form-select" id="editNilaiHuruf" required>
+                                <option value="">Pilih Nilai</option>
+                                <option value="A">A (4.0)</option>
+                                <option value="B">B (3.0)</option>
+                                <option value="C">C (2.0)</option>
+                                <option value="D">D (1.0)</option>
+                                <option value="E">E (0.0)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editPresensi" class="form-label">Presensi (%)</label>
+                            <input type="number" class="form-control" id="editPresensi" required min="0" max="100" step="0.1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editReason" class="form-label">Alasan Perubahan</label>
+                            <textarea class="form-control" id="editReason" rows="3" required placeholder="Alasan mengubah nilai..."></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="button" class="btn btn-primary" id="saveEditGrade">Simpan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get dosen info from localStorage or session
+        const dosenInfo = JSON.parse(localStorage.getItem('currentUser')) || {};
+        
+        // Set dosen ID in form
+        document.getElementById('dosen_id').value = dosenInfo.id || '';
+
+        // Load courses
+        async function loadCourses() {
+            try {
+                const response = await fetch('/api/matakuliah'); // Assuming you have this endpoint
+                const courses = await response.json();
+                
+                const courseSelect = document.getElementById('matakuliah_id');
+                const courseFilter = document.getElementById('courseFilter');
+                
+                // Clear existing options
+                courseSelect.innerHTML = '<option value="">Pilih Mata Kuliah</option>';
+                courseFilter.innerHTML = '<option value="">Semua Mata Kuliah</option>';
+                
+                courses.forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course.id;
+                    option.textContent = `${course.kode} - ${course.nama}`;
+                    courseSelect.appendChild(option);
+                    
+                    const filterOption = document.createElement('option');
+                    filterOption.value = course.id;
+                    filterOption.textContent = `${course.kode} - ${course.nama}`;
+                    courseFilter.appendChild(filterOption);
+                });
+            } catch (error) {
+                console.error('Error loading courses:', error);
+                alert('Gagal memuat data mata kuliah');
+            }
+        }
+
+        // Load grades for a course
+        async function loadGrades(courseId = null, studentNim = null) {
+            try {
+                let url = '/api/grades';
+                const params = new URLSearchParams();
+                
+                if (courseId) params.append('matakuliah_id', courseId);
+                if (studentNim) params.append('nim', studentNim);
+                
+                if ([...params.keys()].length > 0) {
+                    url += '?' + params.toString();
+                }
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                const grades = await response.json();
+                
+                const tbody = document.getElementById('gradesTableBody');
+                tbody.innerHTML = '';
+                
+                grades.forEach(grade => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${grade.nim}</td>
+                        <td>${grade.mahasiswa?.nama_lengkap || 'N/A'}</td>
+                        <td>${grade.matakuliah?.kode || 'N/A'}</td>
+                        <td>${grade.matakuliah?.nama || 'N/A'}</td>
+                        <td>${grade.nilai_huruf}</td>
+                        <td>${grade.nilai_angka}</td>
+                        <td>${grade.presensi}%</td>
+                        <td>${grade.sks}</td>
+                        <td>${grade.semester}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary edit-btn" data-id="${grade.id}">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${grade.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                
+                // Add event listeners for edit and delete buttons
+                document.querySelectorAll('.edit-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const gradeId = this.getAttribute('data-id');
+                        openEditModal(gradeId);
+                    });
+                });
+                
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const gradeId = this.getAttribute('data-id');
+                        if (confirm('Apakah Anda yakin ingin menghapus nilai ini?')) {
+                            deleteGrade(gradeId);
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error('Error loading grades:', error);
+                alert('Gagal memuat data nilai');
+            }
+        }
+
+        // Open edit modal
+        async function openEditModal(gradeId) {
+            try {
+                const response = await fetch(`/api/grades/${gradeId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                const grade = await response.json();
+                
+                document.getElementById('editGradeId').value = grade.id;
+                document.getElementById('editNilaiHuruf').value = grade.nilai_huruf;
+                document.getElementById('editPresensi').value = grade.presensi;
+                
+                const modal = new bootstrap.Modal(document.getElementById('editGradeModal'));
+                modal.show();
+            } catch (error) {
+                console.error('Error opening edit modal:', error);
+                alert('Gagal membuka modal edit');
+            }
+        }
+
+        // Submit grade form
+        document.getElementById('gradeForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const gradeData = {
+                nim: document.getElementById('nim').value,
+                matakuliah_id: parseInt(document.getElementById('matakuliah_id').value),
+                semester: document.getElementById('semester').value,
+                nilai_huruf: document.getElementById('nilai_huruf').value,
+                sks: parseInt(document.getElementById('sks').value),
+                dosen_id: parseInt(document.getElementById('dosen_id').value),
+                presensi: parseFloat(document.getElementById('presensi').value)
+            };
+            
+            try {
+                const response = await fetch('/api/grades', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify(gradeData)
+                });
+                
+                if (response.ok) {
+                    alert('Nilai berhasil disimpan');
+                    document.getElementById('gradeForm').reset();
+                    document.getElementById('dosen_id').value = dosenInfo.id || '';
+                    loadGrades();
+                } else {
+                    const error = await response.json();
+                    alert('Gagal menyimpan nilai: ' + error.detail);
+                }
+            } catch (error) {
+                console.error('Error submitting grade:', error);
+                alert('Gagal menyimpan nilai: ' + error.message);
+            }
+        });
+
+        // Search button click event
+        document.getElementById('searchButton').addEventListener('click', function() {
+            const matakuliahId = document.getElementById('matakuliah_id').value;
+            if (matakuliahId) {
+                loadGrades(matakuliahId);
+            } else {
+                alert('Pilih mata kuliah terlebih dahulu');
+            }
+        });
+
+        // Course filter change event
+        document.getElementById('courseFilter').addEventListener('change', function() {
+            const courseId = this.value;
+            const studentNim = document.getElementById('studentFilter').value;
+            if (courseId) {
+                loadGrades(courseId, studentNim);
+            } else if (studentNim) {
+                loadGrades(null, studentNim);
+            } else {
+                loadGrades();
+            }
+        });
+
+        // Student filter input event
+        document.getElementById('studentFilter').addEventListener('input', function() {
+            const studentNim = this.value.trim();
+            const courseId = document.getElementById('courseFilter').value;
+            if (studentNim) {
+                loadGrades(courseId, studentNim);
+            } else {
+                loadGrades(courseId);
+            }
+        });
+
+        // Save edited grade
+        document.getElementById('saveEditGrade').addEventListener('click', async function() {
+            const gradeId = document.getElementById('editGradeId').value;
+            const gradeUpdateData = {
+                nilai_huruf: document.getElementById('editNilaiHuruf').value,
+                presensi: parseFloat(document.getElementById('editPresensi').value),
+                reason: document.getElementById('editReason').value
+            };
+            
+            try {
+                const response = await fetch(`/api/grades/${gradeId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify(gradeUpdateData)
+                });
+                
+                if (response.ok) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('editGradeModal'));
+                    modal.hide();
+                    alert('Nilai berhasil diupdate');
+                    loadGrades();
+                } else {
+                    const error = await response.json();
+                    alert('Gagal mengupdate nilai: ' + error.detail);
+                }
+            } catch (error) {
+                console.error('Error updating grade:', error);
+                alert('Gagal mengupdate nilai: ' + error.message);
+            }
+        });
+
+        // Delete grade function
+        async function deleteGrade(gradeId) {
+            try {
+                const response = await fetch(`/api/grades/${gradeId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    alert('Nilai berhasil dihapus');
+                    loadGrades();
+                } else {
+                    const error = await response.json();
+                    alert('Gagal menghapus nilai: ' + error.detail);
+                }
+            } catch (error) {
+                console.error('Error deleting grade:', error);
+                alert('Gagal menghapus nilai: ' + error.message);
+            }
+        }
+
+        // Initialize the page when loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCourses();
+            loadGrades();
+        });
+    </script>
+</body>
+</html>

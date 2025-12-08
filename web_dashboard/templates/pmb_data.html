@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}PMB Data - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>PMB Data Management</h2>
+        <p>Manage student registration applications and admission processes.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <div>
+                <a href="/api/pmb/register" class="btn btn-primary" target="_blank">Add New Registration</a>
+                <a href="/api/pmb/stats" class="btn btn-info" target="_blank">View Statistics</a>
+            </div>
+            <div>
+                <a href="/docs#tag/PMB" class="btn btn-outline-secondary" target="_blank">PMB API Docs</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">PMB Registrations</h5>
+                <span class="badge bg-primary">Total: {{ pmb_data|length if pmb_data else 0 }} registrations</span>
+            </div>
+            <div class="card-body">
+                {% if pmb_data %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nama</th>
+                                <th>Nomor Registrasi</th>
+                                <th>Email</th>
+                                <th>Program Studi</th>
+                                <th>Status</th>
+                                <th>NIM</th>
+                                <th>Dibuat</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pmb in pmb_data %}
+                            <tr>
+                                <td>{{ pmb.id }}</td>
+                                <td>{{ pmb.nama }}</td>
+                                <td>{{ pmb.nomor_registrasi }}</td>
+                                <td>{{ pmb.email }}</td>
+                                <td>{{ pmb.program_studi_nama if pmb.program_studi_nama else pmb.program_studi }}</td>
+                                <td>
+                                    <span class="badge
+                                        {% if pmb.status == 'PENDING' %}bg-warning
+                                        {% elif pmb.status == 'APPROVED' %}bg-success
+                                        {% elif pmb.status == 'REJECTED' %}bg-danger
+                                        {% else %}bg-secondary{% endif %}">
+                                        {{ pmb.status }}
+                                    </span>
+                                </td>
+                                <td>{{ pmb.nim if pmb.nim else '-' }}</td>
+                                <td>{{ pmb.created_at if pmb.created_at else '-' }}</td>
+                                <td>
+                                    {% if pmb.status == 'PENDING' %}
+                                        <a href="/api/pmb/approve/{{ pmb.id }}" class="btn btn-sm btn-success" target="_blank">Approve</a>
+                                        <a href="/api/pmb/status/{{ pmb.id }}" class="btn btn-sm btn-danger" target="_blank">Reject</a>
+                                    {% elif pmb.status == 'APPROVED' %}
+                                        <span class="text-success">Approved</span>
+                                    {% else %}
+                                        <span class="text-danger">Rejected</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>No PMB data available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

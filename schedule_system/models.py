@@ -21,23 +21,26 @@ class Ruang(Base):
 
 class Dosen(Base):
     __tablename__ = 'dosen'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     nip = Column(String(20), unique=True, nullable=False)  # NIP
     nama = Column(String(255), nullable=False)  # Name
     email = Column(String(255), unique=True, nullable=False)  # Email
     phone = Column(String(20), nullable=True)  # Phone number
     program_studi = Column(String(100), nullable=True)  # Department/Study Program
+    kode_dosen = Column(String, nullable=True)  # Used to link with auth system
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     jadwal_kelas = relationship("JadwalKelas", back_populates="dosen")
+    # Removed grades relationship to avoid circular import issues during initialization
+    # grades = relationship("grades_system.models.Grade", back_populates="dosen")
 
 
 class JadwalKelas(Base):
     __tablename__ = 'jadwal_kelas'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     kode_mk = Column(String(10), nullable=False)  # Course code
     dosen_id = Column(Integer, ForeignKey('dosen.id'), nullable=False)
@@ -50,7 +53,7 @@ class JadwalKelas(Base):
     kelas = Column(String(10), nullable=True)  # Class section (e.g., "A", "B")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     dosen = relationship("Dosen", back_populates="jadwal_kelas")
     ruang = relationship("Ruang", back_populates="jadwal_kelas")

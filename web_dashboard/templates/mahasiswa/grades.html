@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nilai Saya - Dashboard Mahasiswa</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        .header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 2rem 0;
+        }
+        .table th {
+            background-color: #495057;
+            color: white;
+        }
+        .ipk-card, .ips-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .semester-section {
+            margin-bottom: 2rem;
+        }
+        .semester-header {
+            background-color: #e9ecef;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="fas fa-file-alt me-2"></i>Nilai & Transkrip Saya</h1>
+                    <p class="mb-0">Dashboard Mahasiswa</p>
+                </div>
+                <div class="col-auto">
+                    <a href="/dashboard/mahasiswa" class="btn btn-light">
+                        <i class="fas fa-arrow-left me-1"></i> Kembali
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card ipk-card text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-calculator me-2"></i>IPK Terkini</h5>
+                        <h2 class="card-text" id="ipkValue">0.00</h2>
+                        <p class="card-text">Indeks Prestasi Kumulatif</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-graduation-cap me-2"></i>Total SKS</h5>
+                        <h2 class="card-text" id="totalSks">0</h2>
+                        <p class="card-text">Jumlah SKS Lulus</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-tasks me-2"></i>Jumlah MK</h5>
+                        <h2 class="card-text" id="jumlahMk">0</h2>
+                        <p class="card-text">Mata Kuliah Selesai</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>IPS Per Semester</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Semester</th>
+                                        <th>IPS</th>
+                                        <th>Total SKS</th>
+                                        <th>Jumlah MK</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ipsTableBody">
+                                    <!-- IPS data will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Daftar Nilai</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Kode MK</th>
+                                        <th>Nama MK</th>
+                                        <th>SKS</th>
+                                        <th>Nilai Huruf</th>
+                                        <th>Nilai Angka</th>
+                                        <th>Semester</th>
+                                        <th>Tanggal Input</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gradesTableBody">
+                                    <!-- Data will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="d-grid gap-2 col-6 mx-auto">
+                    <button id="btnDownloadTranskrip" class="btn btn-primary btn-lg">
+                        <i class="fas fa-download me-2"></i>Download Transkrip (PDF)
+                    </button>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get the NIM and token from the server-side template context
+        const nim = "{{ user.nim }}";
+        const token = "{{ token }}";
+
+        // Load student grades
+        async function loadGrades() {
+            try {
+                const response = await fetch(`/api/grades/student/${nim}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const grades = await response.json();
+
+                const tbody = document.getElementById('gradesTableBody');
+                tbody.innerHTML = '';
+
+                let totalSks = 0;
+                let totalBobot = 0;
+                let jumlahMk = 0;
+
+                // Group grades by semester for IPS calculation
+                const gradesBySemester = {};
+                grades.forEach(grade => {
+                    if (!gradesBySemester[grade.semester]) {
+                        gradesBySemester[grade.semester] = [];
+                    }
+                    gradesBySemester[grade.semester].push(grade);
+                });
+
+                // Calculate IPS for each semester and display
+                const ipsTableBody = document.getElementById('ipsTableBody');
+                ipsTableBody.innerHTML = '';
+
+                for (const semester in gradesBySemester) {
+                    const semesterGrades = gradesBySemester[semester];
+
+                    let semesterSks = 0;
+                    let semesterBobot = 0;
+                    let semesterMk = 0;
+
+                    semesterGrades.forEach(grade => {
+                        if (grade.nilai_huruf !== 'E') { // Only count passing grades
+                            semesterSks += grade.sks;
+                            semesterBobot += (grade.nilai_angka * grade.sks);
+                            semesterMk++;
+                        }
+                    });
+
+                    const ips = semesterSks > 0 ? (semesterBobot / semesterSks).toFixed(2) : 0.00;
+
+                    const ipsRow = document.createElement('tr');
+                    ipsRow.innerHTML = `
+                        <td>${semester}</td>
+                        <td>${ips}</td>
+                        <td>${semesterSks}</td>
+                        <td>${semesterMk}</td>
+                    `;
+                    ipsTableBody.appendChild(ipsRow);
+                }
+
+                // Populate main grades table
+                grades.forEach(grade => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${grade.kode_mk}</td>
+                        <td>${grade.nama_mk}</td>
+                        <td>${grade.sks}</td>
+                        <td><span class="badge bg-${getNilaiBadgeClass(grade.nilai_huruf)}">${grade.nilai_huruf}</span></td>
+                        <td>${grade.nilai_angka}</td>
+                        <td>${grade.semester}</td>
+                        <td>${new Date(grade.created_at).toLocaleDateString('id-ID')}</td>
+                    `;
+                    tbody.appendChild(row);
+
+                    // Calculate IPK and totals
+                    if (grade.nilai_huruf && grade.nilai_huruf !== 'E') {
+                        totalSks += grade.sks;
+                        totalBobot += (grade.nilai_angka * grade.sks);
+                        jumlahMk++;
+                    }
+                });
+
+                // Calculate and display IPK
+                const ipk = totalSks > 0 ? (totalBobot / totalSks).toFixed(2) : 0.00;
+                document.getElementById('ipkValue').textContent = ipk;
+                document.getElementById('totalSks').textContent = totalSks;
+                document.getElementById('jumlahMk').textContent = jumlahMk;
+
+            } catch (error) {
+                console.error('Error loading grades:', error);
+                alert('Gagal memuat data nilai. Silakan refresh halaman atau login kembali.');
+            }
+        }
+
+        // Helper function to get badge class based on grade
+        function getNilaiBadgeClass(nilai) {
+            switch(nilai.toUpperCase()) {
+                case 'A': return 'success';
+                case 'B': return 'primary';
+                case 'C': return 'warning';
+                case 'D': return 'danger';
+                case 'E': return 'secondary';
+                default: return 'light';
+            }
+        }
+
+        // Initialize the page when loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            if (nim && token) {
+                loadGrades();
+            } else {
+                alert('Data pengguna tidak ditemukan. Silakan login kembali.');
+            }
+        });
+    </script>
+
+    <script>
+// Download PDF Transkrip
+document.getElementById("btnDownloadTranskrip").addEventListener("click", async function () {
+
+    const nimUser = "{{ user.nim }}";  
+    const tokenValue = "{{ token }}";
+
+    if (!tokenValue) {
+        alert("Token tidak ditemukan. Silakan login ulang.");
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/gpa/transcript/${nimUser}/pdf`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${tokenValue}`
+            }
+        });
+
+        if (!resp.ok) {
+            const errText = await resp.text();
+            console.error("PDF Download Error:", errText);
+            alert("Gagal mengunduh PDF: " + errText);
+            return;
+        }
+
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+
+        // Trigger download
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `transkrip_${nimUser}.pdf`;
+        a.click();
+
+        URL.revokeObjectURL(url);
+
+    } catch (e) {
+        console.error("PDF Fetch Error:", e);
+        alert("Terjadi kesalahan: " + e.message);
+    }
+});
+</script>
+
+</body>
+</html>

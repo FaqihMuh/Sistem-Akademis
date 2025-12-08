@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}KRS Data - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>KRS Data Management</h2>
+        <p>Manage course registration system for students.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <div>
+                <a href="/api/krs/{nim}/add" class="btn btn-primary" target="_blank">Add Course</a>
+                <a href="/api/krs/{nim}/submit" class="btn btn-info" target="_blank">Submit KRS</a>
+            </div>
+            <div>
+                <a href="/docs#tag/KRS" class="btn btn-outline-secondary" target="_blank">KRS API Docs</a>
+            </div>
+        </div>
+        <div class="alert alert-info mt-2" role="alert">
+            <strong>Note:</strong> Replace <code>{nim}</code> in URLs with actual student NIM. Example: <code>/api/krs/2025TIF0001/add</code>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">KRS Registrations</h5>
+                <span class="badge bg-primary">Total: {{ krs_data|length if krs_data else 0 }} registered KRS</span>
+            </div>
+            <div class="card-body">
+                {% if krs_data %}
+                <!-- Group by student NIM -->
+                {% set grouped_krs = {} %}
+                {% for krs in krs_data %}
+                    {% set student_nim = krs.nim %}
+                    {% if grouped_krs[student_nim] is not defined %}
+                        {% set _ = grouped_krs.update({student_nim: []}) %}
+                    {% endif %}
+                    {% set _ = grouped_krs[student_nim].append(krs) %}
+                {% endfor %}
+
+                {% for student_nim, student_krs_list in grouped_krs.items() %}
+                <div class="mb-4">
+                    <h5 class="border-bottom pb-2">Student: {{ student_nim }}</h5>
+                    {% for krs in student_krs_list %}
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>Semester:</strong> {{ krs.semester }} |
+                                    <strong>Status:</strong>
+                                    <span class="badge
+                                        {% if krs.status == 'DRAFT' %}bg-secondary
+                                        {% elif krs.status == 'SUBMITTED' %}bg-warning
+                                        {% elif krs.status == 'APPROVED' %}bg-success
+                                        {% else %}bg-danger{% endif %}">
+                                        {{ krs.status }}
+                                    </span>
+                                </div>
+                                <div>
+                                    <a href="/api/krs/{{ krs.nim }}/approve" class="btn btn-sm btn-success" target="_blank">Approve</a>
+                                    <a href="/api/krs/{{ krs.nim }}/submit" class="btn btn-sm btn-info" target="_blank">Submit</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            {% if krs.courses %}
+                            <h6>Registered Courses:</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-borderless">
+                                    <thead>
+                                        <tr>
+                                            <th>Kode MK</th>
+                                            <th>Nama MK</th>
+                                            <th>SKS</th>
+                                            <th>Semester</th>
+                                            <th>Hari</th>
+                                            <th>Jam</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for course in krs.courses %}
+                                        <tr>
+                                            <td>{{ course.kode }}</td>
+                                            <td>{{ course.nama }}</td>
+                                            <td>{{ course.sks }}</td>
+                                            <td>{{ course.semester }}</td>
+                                            <td>{{ course.hari }}</td>
+                                            <td>{{ course.jam_mulai.strftime('%H:%M') if course.jam_mulai else '' }} - {{ course.jam_selesai.strftime('%H:%M') if course.jam_selesai else '' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <p class="text-muted mb-0">No courses registered yet.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+                {% else %}
+                <p>No KRS data available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

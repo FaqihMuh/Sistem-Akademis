@@ -1,0 +1,695 @@
+{% extends "base.html" %}
+
+{% block title %}Dosen Dashboard - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2> Dosen Dashboard </h2>
+
+        {# Inject current user object for client-side JS #}
+        <script id="current-user-json" type="application/json">
+  {{ user | default({}) | tojson | safe }}
+</script>
+
+<script>
+  // Parse JSON safely from the dedicated script tag
+  try {
+    const currentUserText = document.getElementById('current-user-json')?.textContent || '{}';
+    window.currentUserGlobal = JSON.parse(currentUserText);
+  } catch (e) {
+    console.error('Gagal parse currentUser JSON:', e);
+    window.currentUserGlobal = {};
+  }
+  console.log("Injected current user (dashboard):", window.currentUserGlobal);
+</script>
+
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Identitas Dosen</h4>
+            </div>
+            <div class="card-body">
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Kode Dosen:</strong> {{ user.kode_dosen }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Jadwal Mengajar</h4>
+            </div>
+            <div class="card-body">
+                {% if schedule_data %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Kode MK</th>
+                                    <th>Nama MK</th>
+                                    <th>Semester</th>
+                                    <th>Hari</th>
+                                    <th>Jam</th>
+                                    <th>Ruang</th>
+                                    <th>Kapasitas</th>
+                                    <th>Kelas</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for schedule in schedule_data %}
+                                <tr>
+                                    <td>{{ schedule.kode_mk }}</td>
+                                    <td>{{ schedule.nama_mk if schedule.nama_mk else schedule.kode_mk }}</td>
+                                    <td>{{ schedule.semester }}</td>
+                                    <td>{{ schedule.hari }}</td>
+                                    <td>
+                                        {% if schedule.jam_mulai and schedule.jam_selesai %}
+                                            {% if schedule.jam_mulai.strftime %}
+                                                {{ schedule.jam_mulai.strftime('%H:%M') }} - {{ schedule.jam_selesai.strftime('%H:%M') }}
+                                            {% else %}
+                                                {{ schedule.jam_mulai }} - {{ schedule.jam_selesai }}
+                                            {% endif %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if schedule.ruang %}
+                                            {{ schedule.ruang.nama }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ schedule.kapasitas_kelas }}</td>
+                                    <td>{{ schedule.kelas if schedule.kelas else '-' }}</td>
+                                    <td>
+                                        <button class="btn btn-primary btn-sm btn-detail-nilai"
+                                                data-kode-mk="{{ schedule.kode_mk }}"
+                                                data-nama-mk="{{ schedule.nama_mk if schedule.nama_mk else schedule.kode_mk }}"
+                                                data-id="{{ schedule.id }}">
+                                            <i class="fas fa-list"></i> Detail Nilai
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p>Tidak ada jadwal mengajar tersedia.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal untuk Detail Nilai -->
+<div class="modal fade" id="detailNilaiModal" tabindex="-1" aria-labelledby="detailNilaiModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailNilaiModalLabel">Detail Nilai - <span id="modalCourseInfo"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6>Daftar Mahasiswa</h6>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-striped" id="tableMahasiswaNilai">
+                        <thead>
+                            <tr>
+                                <th>NIM</th>
+                                <th>Nama Mahasiswa</th>
+                                <th>Nilai Huruf</th>
+                                <th>Nilai Angka</th>
+                                <th>SKS</th>
+                                <th>Presensi</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbodyMahasiswaNilai">
+                            <!-- Data akan diisi secara dinamis -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="loadingSpinner" class="d-none text-center py-3">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Modal: Tambah Nilai -->
+<div class="modal fade" id="modalTambahNilai" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tambah Nilai</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="formTambahNilai">
+                    <input type="hidden" id="addDosenId">
+
+                    <div class="mb-2">
+                        <label>NIM</label>
+                        <input readonly id="addNim" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Nama Mahasiswa</label>
+                        <input readonly id="addNama" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Kode MK</label>
+                        <input readonly id="addKodeMk" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Nilai Huruf</label>
+                        <select id="addNilaiHuruf" class="form-select" required>
+                            <option value="">Pilih</option>
+                            <option>A</option>
+                            <option>B</option>
+                            <option>C</option>
+                            <option>D</option>
+                            <option>E</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Presensi</label>
+                        <input id="addPresensi" type="number" class="form-control" min="0" max="100" value="100">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>SKS</label>
+                        <input readonly id="addSks" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Semester</label>
+                        <input readonly id="addSemester" class="form-control">
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button id="btnSimpanTambah" class="btn btn-success">Simpan</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Update Nilai -->
+<div class="modal fade" id="modalUpdateNilai" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Update Nilai</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="formUpdateNilai">
+                    <input type="hidden" id="updateGradeId">
+                    <input type="hidden" id="updateDosenId">
+
+                    <div class="mb-2">
+                        <label>NIM</label>
+                        <input readonly id="updateNim" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Nama Mahasiswa</label>
+                        <input readonly id="updateNama" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Kode MK</label>
+                        <input readonly id="updateKodeMk" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Nilai Huruf</label>
+                        <select id="updateNilaiHuruf" class="form-select" required>
+                            <option value="">Pilih</option>
+                            <option>A</option>
+                            <option>B</option>
+                            <option>C</option>
+                            <option>D</option>
+                            <option>E</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Presensi</label>
+                        <input id="updatePresensi" type="number" class="form-control" min="0" max="100">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>SKS</label>
+                        <input readonly id="updateSks" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Semester</label>
+                        <input readonly id="updateSemester" class="form-control">
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Alasan Perubahan</label>
+                        <textarea id="updateReason" class="form-control"></textarea>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button id="btnSimpanUpdate" class="btn btn-primary">Update</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Use injected global user object
+    const currentUser = window.currentUserGlobal || {};
+    console.log('currentUser in JS:', currentUser);
+
+    // Determine Bearer token (if backend provided one)
+    let token = currentUser.token || currentUser.access_token || currentUser.bearer || '';
+    if (token && !token.startsWith('Bearer ')) {
+        token = 'Bearer ' + token;
+    }
+
+    // If no token, still allow session-based credentials to flow (credentials: 'include')
+    // but many endpoints require Bearer; alert user if missing when attempting actions.
+    console.log('Auth token present:', !!token);
+
+    let currentCourseId = null;
+
+    // Helper: request headers
+    function authHeaders(contentType = 'application/json') {
+        const headers = {};
+        if (contentType) headers['Content-Type'] = contentType;
+        if (token) headers['Authorization'] = token;
+        return headers;
+    }
+
+    // Function to load students for a course (by matakuliah id)
+    async function loadStudentsForCourse(matakuliahId) {
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        const tbody = document.getElementById('tbodyMahasiswaNilai');
+        tbody.innerHTML = '';
+
+        try {
+            // Get the course students from KRS (endpoint may return list of KRS entries with mahasiswa)
+            const krsResponse = await fetch(`/api/krs/course/${matakuliahId}`, {
+                headers: authHeaders(),
+                credentials: 'include'
+            });
+
+            if (!krsResponse.ok) {
+                const errorText = await krsResponse.text();
+                console.error('KRS response error:', krsResponse.status, errorText);
+                throw new Error(`Failed to fetch course students: ${krsResponse.status} - ${errorText}`);
+            }
+
+            const krsData = await krsResponse.json();
+            console.log('KRS data received:', krsData);
+
+            // Get existing grades for this course
+            const gradesResponse = await fetch(`/api/grades/course/${matakuliahId}`, {
+                headers: authHeaders(),
+                credentials: 'include'
+            });
+
+            let gradesData = [];
+            if (!gradesResponse.ok) {
+                // If 403, show helpful console and continue with empty grades array
+                if (gradesResponse.status === 403) {
+                    console.warn('Grades endpoint returned 403 - authorization issue. Ensure the current user is authorized and token is set.');
+                } else {
+                    console.warn('Grades endpoint returned non-OK status:', gradesResponse.status);
+                }
+                gradesData = [];
+            } else {
+                gradesData = await gradesResponse.json();
+                console.log('Grades data received:', gradesData);
+            }
+
+            // Map grades by nim for quick look-up
+            const gradesMap = {};
+            gradesData.forEach(grade => {
+                gradesMap[grade.nim] = grade;
+            });
+
+            // Populate rows using KRS data (each element expected to contain nim and mahasiswa info)
+            krsData.forEach(krs => {
+                const grade = gradesMap[krs.nim] || null;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${krs.nim}</td>
+                    <td>${krs.mahasiswa ? krs.mahasiswa.nama_lengkap : krs.nim}</td>
+                    <td>${grade ? grade.nilai_huruf : '-'}</td>
+                    <td>${grade ? grade.nilai_angka : '-'}</td>
+                    <td>${grade ? grade.sks : '-'}</td>
+                    <td>${grade ? grade.presensi : '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary btn-edit-nilai"
+                                data-nim="${krs.nim}"
+                                data-nama="${krs.mahasiswa ? krs.mahasiswa.nama_lengkap : krs.nim}"
+                                data-nilai-huruf="${grade ? grade.nilai_huruf : ''}"
+                                data-nilai-angka="${grade ? grade.nilai_angka : ''}"
+                                data-sks="${grade ? grade.sks : (krs.matakuliah ? krs.matakuliah.sks : '-')}"
+                                data-semester="${krs.matakuliah ? krs.matakuliah.semester : '-'}"
+
+                                data-presensi="${grade ? grade.presensi : 90}"
+                                data-grade-id="${grade ? grade.id : ''}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+
+                        ${grade ? `
+                            <button class="btn btn-sm btn-danger btn-hapus-nilai ms-1"
+                                    data-grade-id="${grade.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : `
+                            <button class="btn btn-sm btn-success btn-add-nilai ms-1"
+                                    data-nim="${krs.nim}"
+                                    data-nama="${krs.mahasiswa ? krs.mahasiswa.nama_lengkap : krs.nim}"
+                                    data-sks="${krs.matakuliah?.sks || '-'}"
+                                    data-semester="${krs.matakuliah?.semester || '-'}">
+
+                                <i class="fas fa-plus"></i>
+                            </button>
+
+                        `}
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            // Event listeners: edit
+            document.querySelectorAll('.btn-edit-nilai').forEach(button => {
+                button.addEventListener('click', function () {
+
+                    document.getElementById('updateGradeId').value = this.dataset.gradeId;
+                    document.getElementById('updateNim').value = this.dataset.nim;
+                    document.getElementById('updateNama').value = this.dataset.nama;
+                    document.getElementById('updateNilaiHuruf').value = this.dataset.nilaiHuruf;
+                    document.getElementById('updatePresensi').value = this.dataset.presensi;
+                    document.getElementById('updateSks').value = this.dataset.sks;
+                    document.getElementById('updateSemester').value = this.dataset.semester;
+
+                    document.getElementById('updateKodeMk').value =
+                        document.getElementById('modalCourseInfo').textContent.split(' - ')[0];
+
+                    document.getElementById('updateDosenId').value =
+                        currentUser.kode_dosen || currentUser.id;
+
+                    new bootstrap.Modal(document.getElementById('modalUpdateNilai')).show();
+                });
+            });
+
+            
+            document.getElementById('btnSimpanTambah').addEventListener('click', async function () {
+                const payload = {
+                    nim: document.getElementById('addNim').value,
+                    matakuliah_id: await getMatakuliahIdByKode(document.getElementById('addKodeMk').value),
+                    semester: document.getElementById('addSemester').value,
+                    nilai_huruf: document.getElementById('addNilaiHuruf').value,
+                    sks: parseInt(document.getElementById('addSks').value),
+                    presensi: parseFloat(document.getElementById('addPresensi').value),
+                    dosen_id: parseInt(document.getElementById('addDosenId').value)
+                };
+
+                const resp = await fetch('/api/grades', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify(payload)
+                });
+
+                if (resp.ok) {
+                    alert("Nilai ditambahkan");
+                    loadStudentsForCourse(currentCourseId);
+                    bootstrap.Modal.getInstance(document.getElementById('modalTambahNilai')).hide();
+                }
+            });
+
+
+            document.getElementById('btnSimpanUpdate').addEventListener('click', async function () {
+                const gradeId = document.getElementById('updateGradeId').value;
+
+                const payload = {
+                    nilai_huruf: document.getElementById('updateNilaiHuruf').value,
+                    presensi: parseFloat(document.getElementById('updatePresensi').value),
+                    dosen_id: parseInt(document.getElementById('updateDosenId').value),
+                    reason: document.getElementById('updateReason').value || "Perubahan nilai"
+                };
+
+                const resp = await fetch(`/api/grades/${gradeId}`, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    body: JSON.stringify(payload)
+                });
+
+                if (resp.ok) {
+                    alert("Nilai diperbarui");
+                    loadStudentsForCourse(currentCourseId);
+                    bootstrap.Modal.getInstance(document.getElementById('modalUpdateNilai')).hide();
+                }
+            });
+
+
+            // delete grade
+            document.querySelectorAll('.btn-hapus-nilai').forEach(button => {
+                button.addEventListener('click', async function() {
+                    const gradeId = this.getAttribute('data-grade-id');
+                    if (!gradeId) return alert('Grade ID tidak tersedia');
+
+                    if (!confirm('Apakah Anda yakin ingin menghapus nilai ini?')) return;
+
+                    try {
+                        const resp = await fetch(`/api/grades/${gradeId}`, {
+                            method: 'DELETE',
+                            headers: authHeaders(),
+                            credentials: 'include'
+                        });
+
+                        if (resp.ok) {
+                            alert('Nilai berhasil dihapus');
+                            loadStudentsForCourse(currentCourseId);
+                        } else {
+                            const err = await resp.json();
+                            alert('Gagal menghapus nilai: ' + (err.detail || resp.statusText));
+                        }
+                    } catch (err) {
+                        alert('Error: ' + err.message);
+                    }
+                });
+            });
+
+            // add new grade button for students without grades
+            document.querySelectorAll('.btn-add-nilai').forEach(button => {
+                button.addEventListener('click', function () {
+
+                    document.getElementById('addNim').value = this.dataset.nim;
+                    document.getElementById('addNama').value = this.dataset.nama;
+                    document.getElementById('addSks').value = this.dataset.sks || "-";
+                    document.getElementById('addSemester').value = this.dataset.semester;
+                    document.getElementById('addKodeMk').value =
+                        document.getElementById('modalCourseInfo').textContent.split(' - ')[0];
+
+                    document.getElementById('addDosenId').value =
+                        currentUser.kode_dosen || currentUser.id;
+
+                    new bootstrap.Modal(document.getElementById('modalTambahNilai')).show();
+                });
+            });
+
+
+        } catch (error) {
+            console.error('Error loading students:', error);
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center">Gagal memuat data mahasiswa: ${error.message}</td></tr>`;
+        } finally {
+            document.getElementById('loadingSpinner').classList.add('d-none');
+        }
+    }
+
+    // Attach click event to detail nilai buttons (uses kode_mk to find matakuliah id)
+    document.querySelectorAll('.btn-detail-nilai').forEach(button => {
+        button.addEventListener('click', async function() {
+            const kodeMk = this.getAttribute('data-kode-mk');
+            const namaMk = this.getAttribute('data-nama-mk');
+
+            try {
+                // Prefer direct endpoint /api/krs/kode/{kode} if available
+                let matakuliah = null;
+                const matResp = await fetch(`/api/krs/kode/${encodeURIComponent(kodeMk)}`, {
+                    headers: authHeaders(),
+                    credentials: 'include'
+                });
+
+                if (matResp.ok) {
+                    matakuliah = await matResp.json();
+                } else {
+                    // fallback: fetch all matakuliah and find by kode
+                    const allMkResp = await fetch('/api/matakuliah', {
+                        headers: authHeaders(),
+                        credentials: 'include'
+                    });
+
+                    if (!allMkResp.ok) throw new Error('Gagal mengambil daftar matakuliah');
+
+                    const allMkData = await allMkResp.json();
+                    matakuliah = allMkData.find(mk => mk.kode === kodeMk);
+                }
+
+                if (!matakuliah || !matakuliah.id) throw new Error('Mata kuliah tidak ditemukan');
+
+                currentCourseId = matakuliah.id;
+
+                // Set modal title and load students/grades
+                document.getElementById('modalCourseInfo').textContent = `${kodeMk} - ${namaMk}`;
+                await loadStudentsForCourse(currentCourseId);
+
+                const modal = new bootstrap.Modal(document.getElementById('detailNilaiModal'));
+                modal.show();
+            } catch (err) {
+                console.error('Error:', err);
+                alert('Gagal memuat data: ' + err.message);
+            }
+        });
+    });
+
+    // btnTambahNilai handler (in modal header)
+    document.getElementById('btnTambahNilai').addEventListener('click', function() {
+        document.getElementById('nilaiForm').reset();
+        document.getElementById('modalGradeId').value = '';
+        document.getElementById('modalKodeMk').value = document.querySelector('#detailNilaiModal .modal-title span').textContent.split(' - ')[0];
+
+        const dosenId = currentUser.kode_dosen || currentUser.id || '';
+        document.getElementById('modalDosenId').value = dosenId;
+
+        if (!dosenId) {
+            alert('Dosen ID tidak ditemukan. Silakan login kembali.');
+            return;
+        }
+
+        document.getElementById('nilaiModalLabel').textContent = 'Tambah Nilai';
+        document.getElementById('btnSimpanNilai').textContent = 'Simpan';
+        document.getElementById('modalReason').closest('.mb-3').style.display = 'none';
+        const modal = new bootstrap.Modal(document.getElementById('nilaiModal'));
+        modal.show();
+    });
+
+    // Save grade (create/update)
+    document.getElementById('btnSimpanNilai').addEventListener('click', async function() {
+        const gradeId = document.getElementById('modalGradeId').value;
+        const resolvedDosenId = currentUser.kode_dosen || currentUser.id;
+        if (!resolvedDosenId) {
+            alert('Dosen ID tidak ditemukan. Silakan login kembali.');
+            return;
+        }
+        document.getElementById('modalDosenId').value = resolvedDosenId;
+
+        const formPayload = {
+            nim: document.getElementById('modalNim').value,
+            matakuliah_id: await getMatakuliahIdByKode(document.getElementById('modalKodeMk').value),
+            semester: document.getElementById('modalSemester').value,
+            nilai_huruf: document.getElementById('modalNilaiHuruf').value,
+            sks: parseInt(document.getElementById('modalSks').value),
+            dosen_id: parseInt(resolvedDosenId),
+            presensi: parseFloat(document.getElementById('modalPresensi').value)
+        };
+
+        if (!formPayload.matakuliah_id) return alert('Gagal menemukan ID mata kuliah untuk kode tersebut.');
+
+        if (gradeId) {
+            formPayload.reason = document.getElementById('modalReason').value || 'Update nilai';
+        }
+
+        try {
+            let resp;
+            if (gradeId) {
+                resp = await fetch(`/api/grades/${gradeId}`, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    credentials: 'include',
+                    body: JSON.stringify(formPayload)
+                });
+            } else {
+                resp = await fetch('/api/grades', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    credentials: 'include',
+                    body: JSON.stringify(formPayload)
+                });
+            }
+
+            if (resp.ok) {
+                alert(gradeId ? 'Nilai berhasil diupdate' : 'Nilai berhasil ditambahkan');
+                bootstrap.Modal.getInstance(document.getElementById('nilaiModal')).hide();
+                loadStudentsForCourse(currentCourseId);
+            } else {
+                const err = await resp.json().catch(()=>({detail: resp.statusText}));
+                alert('Gagal menyimpan nilai: ' + (err.detail || JSON.stringify(err)));
+            }
+        } catch (err) {
+            alert('Error: ' + err.message);
+        }
+    });
+
+    // Helper to get matakuliah id by kode
+    async function getMatakuliahIdByKode(kode) {
+        try {
+            const resp = await fetch(`/api/krs/kode/${encodeURIComponent(kode)}`, {
+                headers: authHeaders(),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                const mk = await resp.json();
+                return mk ? mk.id : null;
+            } else {
+                // fallback to fetching all (if endpoint missing)
+                const allResp = await fetch('/api/matakuliah', {
+                    headers: authHeaders(),
+                    credentials: 'include'
+                });
+                if (!allResp.ok) return null;
+                const all = await allResp.json();
+                const found = all.find(x => x.kode === kode);
+                return found ? found.id : null;
+            }
+        } catch (err) {
+            console.error('Error getting matakuliah ID:', err);
+            return null;
+        }
+    }
+});
+</script>
+
+{% endblock %}

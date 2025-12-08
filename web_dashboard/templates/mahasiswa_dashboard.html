@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}Mahasiswa Dashboard - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Student Dashboard</h2>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Biodata Mahasiswa</h4>
+            </div>
+            <div class="card-body">
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>NIM:</strong> {{ user.nim }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h4>Kartu Rencana Studi (KRS)</h4>
+            </div>
+            <div class="card-body">
+                {% if krs_data %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Semester</th>
+                                    <th>Status</th>
+                                    <th>Jumlah MK</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for krs in krs_data %}
+                                <tr>
+                                    <td>{{ krs.semester }}</td>
+                                    <td><span class="badge bg-{{ 'success' if krs.status == 'APPROVED' else 'warning' }}">{{ krs.status }}</span></td>
+                                    <td>{{ krs.courses|length }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% for krs in krs_data %}
+                    <div class="mt-3">
+                        <h5>KRS - {{ krs.semester }} (Status: {{ krs.status }})</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Kode MK</th>
+                                    <th>Nama MK</th>
+                                    <th>SKS</th>
+                                    <th>Hari</th>
+                                    <th>Jam</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for course in krs.courses %}
+                                <tr>
+                                    <td>{{ course.kode }}</td>
+                                    <td>{{ course.nama }}</td>
+                                    <td>{{ course.sks }}</td>
+                                    <td>{{ course.hari }}</td>
+                                    <td>
+                                        {% if course.jam_mulai and course.jam_selesai %}
+                                            {% if course.jam_mulai.strftime %}
+                                                {{ course.jam_mulai.strftime('%H:%M') }} - {{ course.jam_selesai.strftime('%H:%M') }}
+                                            {% else %}
+                                                {{ course.jam_mulai }} - {{ course.jam_selesai }}
+                                            {% endif %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p>Tidak ada data KRS tersedia.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h4>Jadwal Kuliah</h4>
+            </div>
+            <div class="card-body">
+                {% if schedule_data %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                <th>Mata Kuliah</th>
+                                <th>Dosen</th>
+                                <th>Hari</th>
+                                <th>Jam</th>
+                                <th>Ruang</th>
+                                <th>Kelas</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                                {% for schedule in schedule_data %}
+                                <tr>
+                                    <td>{{ schedule.kode_mk }}</td>
+                                    <td>
+                                        {# Get the lecturer name from the dosen relationship #}
+                                        {% if schedule.dosen %}
+                                            {{ schedule.dosen.nama }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ schedule.hari }}</td>
+                                    <td>
+                                        {% if schedule.jam_mulai and schedule.jam_selesai %}
+                                            {% if schedule.jam_mulai.strftime %}
+                                                {{ schedule.jam_mulai.strftime('%H:%M') }} - {{ schedule.jam_selesai.strftime('%H:%M') }}
+                                            {% else %}
+                                                {{ schedule.jam_mulai }} - {{ schedule.jam_selesai }}
+                                            {% endif %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {# Get the room name from the ruang relationship #}
+                                        {% if schedule.ruang %}
+                                            {{ schedule.ruang.nama }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ schedule.kelas if schedule.kelas else '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p>Tidak ada jadwal kuliah tersedia.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h4>Nilai & Transkrip</h4>
+            </div>
+            <div class="card-body">
+                <p>Informasi nilai, IPK, dan transkrip akademik</p>
+                <div class="d-grid gap-2">
+                    <a href="/dashboard/mahasiswa/grades" class="btn btn-primary">
+                        <i class="fas fa-file-alt me-1"></i> Lihat Nilai
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Ringkasan Akademik</h4>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="text-primary"><i class="fas fa-calculator me-2"></i>IPK Terkini</h5>
+                                <h3 id="ipkValue">-</h3>
+                                <p class="text-muted">Indeks Prestasi Kumulatif</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="text-success"><i class="fas fa-graduation-cap me-2"></i>Total SKS</h5>
+                                <h3 id="totalSks">-</h3>
+                                <p class="text-muted">Satuan Kredit Semester</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="text-warning"><i class="fas fa-book me-2"></i>Jumlah MK</h5>
+                                <h3 id="jumlahMk">-</h3>
+                                <p class="text-muted">Mata Kuliah Lulus</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Load academic summary with server-side provided data when the page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Update the IPK value with server-provided data
+        const ipkValue = {{ ipk }};
+        if (ipkValue !== undefined) {
+            document.getElementById('ipkValue').textContent = ipkValue.toFixed(2);
+        } else {
+            document.getElementById('ipkValue').textContent = '-';
+        }
+
+        // Update the total SKS value with server-provided data
+        const totalSks = {{ total_sks }};
+        if (totalSks !== undefined) {
+            document.getElementById('totalSks').textContent = totalSks;
+        } else {
+            document.getElementById('totalSks').textContent = '-';
+        }
+
+        // Update the jumlah MK value with server-provided data
+        const jumlahMk = {{ jumlah_mk }};
+        if (jumlahMk !== undefined) {
+            document.getElementById('jumlahMk').textContent = jumlahMk;
+        } else {
+            document.getElementById('jumlahMk').textContent = '-';
+        }
+    });
+</script>
+{% endblock %}

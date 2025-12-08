@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule Data - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Schedule Data Management</h2>
+        <p>Manage class schedules, rooms, and lecturer assignments.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between flex-wrap">
+            <div class="mb-2 mb-md-0">
+                <a href="/api/schedule/create" class="btn btn-primary" target="_blank">Create Schedule</a>
+                <a href="/api/schedule/conflicts" class="btn btn-warning" target="_blank">View Conflicts</a>
+                <a href="/api/schedule/rooms" class="btn btn-info" target="_blank">View Rooms</a>
+            </div>
+            <div>
+                <a href="/docs#tag/Schedule" class="btn btn-outline-secondary" target="_blank">Schedule API Docs</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Class Schedules</h5>
+                <span class="badge bg-primary">Total: {{ schedule_data|length if schedule_data else 0 }} schedules</span>
+            </div>
+            <div class="card-body">
+                {% if schedule_data %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Kode MK</th>
+                                <th>Mata Kuliah</th>
+                                <th>Dosen</th>
+                                <th>Semester</th>
+                                <th>Hari</th>
+                                <th>Jam</th>
+                                <th>Ruang</th>
+                                <th>Kapasitas</th>
+                                <th>Kelas</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for schedule in schedule_data %}
+                            <tr>
+                                <td>{{ schedule.id }}</td>
+                                <td>{{ schedule.kode_mk }}</td>
+                                <td>
+                                    {% if schedule.kode_mk %}
+                                        {{ schedule.kode_mk }} <!-- Course name would normally be linked to matakuliah model -->
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if schedule.dosen %}
+                                        {{ schedule.dosen.nama }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>{{ schedule.semester }}</td>
+                                <td>{{ schedule.hari }}</td>
+                                <td>{{ schedule.jam_mulai.strftime('%H:%M') if schedule.jam_mulai else '' }} - {{ schedule.jam_selesai.strftime('%H:%M') if schedule.jam_selesai else '' }}</td>
+                                <td>
+                                    {% if schedule.ruang %}
+                                        {{ schedule.ruang.nama }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>{{ schedule.kapasitas_kelas }}</td>
+                                <td>{{ schedule.kelas if schedule.kelas else '-' }}</td>
+                                <td>
+                                    <a href="/api/schedule/{{ schedule.id }}" class="btn btn-sm btn-info" target="_blank">View</a>
+                                    <a href="/api/schedule/{{ schedule.id }}/update" class="btn btn-sm btn-warning" target="_blank">Edit</a>
+                                    <a href="/api/schedule/{{ schedule.id }}/delete" class="btn btn-sm btn-danger" target="_blank">Delete</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Show conflicts if any -->
+                {% if schedule_data|selectattr('conflict', 'defined')|list|length > 0 %}
+                <div class="mt-4">
+                    <h5>Conflict Information</h5>
+                    <div class="alert alert-warning">
+                        Some schedules may have conflicts. Check <a href="/api/schedule/conflicts" target="_blank">conflict details</a> for more information.
+                    </div>
+                </div>
+                {% endif %}
+                {% else %}
+                <p>No schedule data available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

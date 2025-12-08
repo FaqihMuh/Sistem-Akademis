@@ -44,7 +44,7 @@ class ProgramStudi(Base):
 
 class CalonMahasiswa(Base):
     __tablename__ = 'calon_mahasiswa'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     nama_lengkap = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False)  # Unique constraint
@@ -57,44 +57,47 @@ class CalonMahasiswa(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     approved_at = Column(DateTime, nullable=True)
     nim = Column(String(255), nullable=True)  # NIM column, default is NULL
-    
+
     # Relationship to program_studi
     program_studi = relationship("ProgramStudi", back_populates="calon_mahasiswa")
     # Back reference from schedule system - using string to avoid circular import in tests
     # jadwal_mahasiswa = relationship("schedule_system.models.JadwalMahasiswa", back_populates="mahasiswa")
-    
+
+    # Removed grades relationship to avoid circular import issues during initialization
+    # grades = relationship("grades_system.models.Grade", back_populates="mahasiswa")
+
     # Application-level validation only (database constraints vary by DB engine)
     # For PostgreSQL, use the migration file to add constraints
     # __table_args__ = (
     #     # For compatibility across different DB engines, we'll add constraints via migrations
     # )
-    
+
     def __init__(self, **kwargs):
         # Validate email format
         email = kwargs.get('email')
         if email and not self.validate_email_format(email):
             raise ValueError("Email format is not valid")
-        
+
         # Validate phone format
         phone = kwargs.get('phone')
         if phone and not self.validate_phone_format(phone):
             raise ValueError("Phone format is not valid for Indonesian numbers (08... with 10-13 digits)")
-        
+
         super().__init__(**kwargs)
-    
+
     @validates('kode')
     def validate_kode_length(self, key, kode):
         """Validate that kode is exactly 3 characters"""
         if kode and len(kode) != 3:
             raise ValueError("Kode must be exactly 3 characters")
         return kode
-    
+
     @staticmethod
     def validate_email_format(email):
         """Validate email format"""
         pattern = r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
         return re.match(pattern, email) is not None
-    
+
     @staticmethod
     def validate_phone_format(phone):
         """Validate Indonesian phone format (08... with 10-13 digits)"""

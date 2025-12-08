@@ -2,7 +2,7 @@
 Schedule System FastAPI Endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import time, datetime
 from schedule_system.models import JadwalKelas, Ruang
@@ -52,6 +52,32 @@ class JadwalKelasUpdate(BaseModel):
     kelas: Optional[str] = None
 
 
+class DosenResponse(BaseModel):
+    id: int
+    nip: str
+    nama: str
+    email: str
+    phone: Optional[str] = None
+    program_studi: Optional[str] = None
+    kode_dosen: Optional[str] = None
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class RuangResponse(BaseModel):
+    id: int
+    kode: str
+    nama: str
+    kapasitas: int
+    jenis: str
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
 class JadwalKelasResponse(BaseModel):
     id: int
     kode_mk: str
@@ -65,6 +91,10 @@ class JadwalKelasResponse(BaseModel):
     kelas: Optional[str]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+
+    # Include related objects
+    dosen: Optional['DosenResponse'] = None
+    ruang: Optional['RuangResponse'] = None
 
     model_config = {"from_attributes": True}
 
@@ -394,3 +424,160 @@ def suggest_alternative_schedules_by_id(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error generating suggestions: {str(e)}"
         )
+
+
+# # 9. GET /student/{nim}
+# @router.get("/student/{nim}", response_model=List[JadwalKelasResponse],
+#             summary="Get schedule for a specific student",
+#             description="Retrieve all class schedules for a specific student by their NIM.")
+# def get_student_schedule(
+#     nim: str,
+#     db: Session = Depends(get_db)
+# ):
+#     """
+#     Get schedule for a specific student by NIM
+#     """
+#     # Import the required models
+#     from schedule_system.models import JadwalMahasiswa, JadwalKelas
+#     from pmb_system.models import CalonMahasiswa, StatusEnum
+
+#     # Validate that the student exists in PMB system with the given NIM
+#     student = db.query(CalonMahasiswa).filter(
+#         CalonMahasiswa.nim == nim
+#     ).first()
+
+#     if not student:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan di sistem PMB"
+#         )
+
+#     # Additionally, ensure the student's status is approved
+#     if student.status != StatusEnum.APPROVED:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Mahasiswa dengan NIM {nim} belum disetujui atau tidak memiliki status yang valid"
+#         )
+
+#     # Get all schedule IDs for this student
+#     student_schedule_registrations = db.query(JadwalMahasiswa).filter(JadwalMahasiswa.nim == nim).all()
+
+#     if not student_schedule_registrations:
+#         # Return empty list if no schedules registered
+#         return []
+
+#     # Get the actual schedules
+#     schedule_ids = [reg.jadwal_kelas_id for reg in student_schedule_registrations]
+#     schedules = db.query(JadwalKelas).filter(JadwalKelas.id.in_(schedule_ids)).all()
+
+#     return schedules
+
+# 9. GET /student/{nim}
+@router.get("/student/{nim}", response_model=List[JadwalKelasResponse],
+            summary="Get schedule for a specific student",
+            description="Retrieve all class schedules for a specific student by their NIM.")
+def get_student_schedule(
+    nim: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get schedule for a specific student by NIM
+    """
+    # Import the required models
+    from schedule_system.models import JadwalMahasiswa, JadwalKelas
+    from pmb_system.models import CalonMahasiswa, StatusEnum
+    from krs_system.models import KRS, KRSDetail, Matakuliah
+
+    # Validate that the student exists in PMB system with the given NIM
+    student = db.query(CalonMahasiswa).filter(
+        CalonMahasiswa.nim == nim
+    ).first()
+
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan di sistem PMB"
+        )
+
+    # Additionally, ensure the student's status is approved
+    if student.status != StatusEnum.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Mahasiswa dengan NIM {nim} belum disetujui atau tidak memiliki status yang valid"
+        )
+
+    # Method 1: Try getting from JadwalMahasiswa (student schedule registration)
+    student_schedule_registrations = db.query(JadwalMahasiswa).filter(JadwalMahasiswa.nim == nim).all()
+
+    if student_schedule_registrations:
+        # If student has registered directly with schedules, use that
+        schedule_ids = [reg.jadwal_kelas_id for reg in student_schedule_registrations]
+        schedules = db.query(JadwalKelas)\
+            .options(joinedload(JadwalKelas.dosen))\
+            .options(joinedload(JadwalKelas.ruang))\
+            .filter(JadwalKelas.id.in_(schedule_ids)).all()
+        return schedules
+    else:
+        # Method 2: If not in JadwalMahasiswa, get from KRS system
+        krs = db.query(KRS).filter(KRS.nim == nim).first()
+
+        if not krs:
+            return []
+
+        details = db.query(KRSDetail).filter(KRSDetail.krs_id == krs.id).all()
+
+        if not details:
+            return []
+
+        matakuliah_ids = [d.matakuliah_id for d in details]
+
+        matakuliah = db.query(Matakuliah).filter(Matakuliah.id.in_(matakuliah_ids)).all()
+        kode_list = [m.kode for m in matakuliah]
+
+        schedules = db.query(JadwalKelas)\
+            .options(joinedload(JadwalKelas.dosen))\
+            .options(joinedload(JadwalKelas.ruang))\
+            .filter(JadwalKelas.kode_mk.in_(kode_list)).all()
+
+        return schedules
+
+
+
+# 10. GET /lecturer/{kode_dosen}
+@router.get("/lecturer/{kode_dosen}", response_model=List[JadwalKelasResponse],
+            summary="Get schedule for a specific lecturer",
+            description="Retrieve all class schedules for a specific lecturer by their kode_dosen.")
+def get_lecturer_schedule(
+    kode_dosen: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get schedule for a specific lecturer by kode_dosen
+    """
+    # Find the lecturer by kode_dosen
+    from schedule_system.models import Dosen, JadwalKelas
+
+    # Try to find the lecturer by kode_dosen first
+    schedule_dosen = db.query(Dosen).filter(
+        Dosen.kode_dosen == kode_dosen
+    ).first()
+
+    if not schedule_dosen:
+        # If not found by kode_dosen, try to find by nip
+        schedule_dosen = db.query(Dosen).filter(
+            Dosen.nip == kode_dosen
+        ).first()
+
+        if not schedule_dosen:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dosen dengan kode_dosen/NIP {kode_dosen} tidak ditemukan di sistem jadwal"
+            )
+
+    # Get all schedules for this lecturer with relationships loaded
+    schedules = db.query(JadwalKelas)\
+        .options(joinedload(JadwalKelas.dosen))\
+        .options(joinedload(JadwalKelas.ruang))\
+        .filter(JadwalKelas.dosen_id == schedule_dosen.id).all()
+
+    return schedules

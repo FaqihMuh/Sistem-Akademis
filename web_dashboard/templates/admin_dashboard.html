@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Admin Dashboard</h2>
+        <p>Welcome, {{ user.username }}! You have administrative access to manage all academic systems.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">PMB Management</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Manage student registration applications and admission processes.</p>
+                <div class="d-grid gap-2">
+                    <a href="/dashboard/pmb" class="btn btn-primary">View PMB Data</a>
+                    <a href="/docs#tag/PMB" class="btn btn-outline-primary" target="_blank">API Documentation</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">KRS Management</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Manage course registration system for students.</p>
+                <div class="d-grid gap-2">
+                    <a href="/dashboard/krs" class="btn btn-success">View KRS Data</a>
+                    <a href="/docs#tag/KRS" class="btn btn-outline-success" target="_blank">API Documentation</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">Schedule Management</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Manage class schedules, rooms, and lecturer assignments.</p>
+                <div class="d-grid gap-2">
+                    <a href="/dashboard/schedule" class="btn btn-info">View Schedule Data</a>
+                    <a href="/docs#tag/Schedule" class="btn btn-outline-info" target="_blank">API Documentation</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0">User Management</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Manage system users (students, lecturers, admins).</p>
+                <div class="d-grid gap-2">
+                    <a href="/api/auth/users" class="btn btn-warning" target="_blank">View All Users</a>
+                    <a href="/docs#tag/auth" class="btn btn-outline-warning" target="_blank">API Documentation</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="card-title mb-0">System Utilities</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Access system reports and utilities.</p>
+                <div class="d-grid gap-2">
+                    <a href="/docs" class="btn btn-secondary" target="_blank">Full API Docs</a>
+                    <a href="/redoc" class="btn btn-outline-secondary" target="_blank">ReDoc Interface</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="card-title mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3 col-6 mb-3">
+                        <a href="/api/pmb" class="text-decoration-none" target="_blank">
+                            <div class="p-3 bg-light rounded">
+                                <i class="fas fa-users"></i>
+                                <h6 class="mt-2">View All PMB</h6>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-md-3 col-6 mb-3">
+                        <a href="/api/krs" class="text-decoration-none" target="_blank">
+                            <div class="p-3 bg-light rounded">
+                                <i class="fas fa-book"></i>
+                                <h6 class="mt-2">View All KRS</h6>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-md-3 col-6 mb-3">
+                        <a href="/api/schedule" class="text-decoration-none" target="_blank">
+                            <div class="p-3 bg-light rounded">
+                                <i class="fas fa-calendar"></i>
+                                <h6 class="mt-2">View All Schedules</h6>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-md-3 col-6 mb-3">
+                        <a href="/api/auth/register" class="text-decoration-none" target="_blank">
+                            <div class="p-3 bg-light rounded">
+                                <i class="fas fa-user-plus"></i>
+                                <h6 class="mt-2">Add User</h6>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

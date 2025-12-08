@@ -8,6 +8,7 @@ from pmb_system.database import Base as PMBBase
 from pmb_system.models import *
 from krs_system.models import *
 from schedule_system.models import *
+from auth_system.models import *
 
 # This is the Alembic Config object
 config = context.config

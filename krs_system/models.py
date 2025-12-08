@@ -7,7 +7,7 @@ from krs_system.enums import KRSStatusEnum  # Using shared enum
 
 class Matakuliah(Base):
     __tablename__ = 'matakuliah'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     kode = Column(String(10), unique=True, nullable=False)  # Course code
     nama = Column(String(255), nullable=False)  # Course name
@@ -18,7 +18,7 @@ class Matakuliah(Base):
     jam_selesai = Column(Time, nullable=False)  # End time
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     krs_details = relationship("KRSDetail", back_populates="matakuliah")
     # jadwal_kelas = relationship("schedule_system.models.JadwalKelas", back_populates="matakuliah")  # Back reference from schedule system
@@ -28,10 +28,12 @@ class Matakuliah(Base):
         back_populates="matakuliah"
     )
     prerequisite_for = relationship(
-        "Prerequisite", 
+        "Prerequisite",
         foreign_keys="Prerequisite.prerequisite_id",
         back_populates="prerequisite_matakuliah"
     )
+    # Removed grades relationship to avoid circular import issues during initialization
+    # grades = relationship("grades_system.models.Grade", back_populates="matakuliah")
 
 
 class Prerequisite(Base):

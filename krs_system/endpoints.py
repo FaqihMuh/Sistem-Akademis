@@ -300,3 +300,144 @@ def get_krs_detail_endpoint(
         response_list.append(response)
     
     return response_list
+
+
+# @router.get("/course/{matakuliah_id}", response_model=List[dict])
+# def get_students_by_course_endpoint(
+#     matakuliah_id: int,
+#     db: Session = Depends(get_db)
+# ):
+#     """
+#     Get all students enrolled in a specific course with approved KRS
+#     """
+#     # First check if the course exists
+#     course = db.query(Matakuliah).filter(Matakuliah.id == matakuliah_id).first()
+#     if not course:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Mata kuliah dengan ID {matakuliah_id} tidak ditemukan"
+#         )
+
+#     # Find all KRS details that reference this course
+#     krs_details = db.query(KRSDetail).filter(KRSDetail.matakuliah_id == matakuliah_id).all()
+
+#     # Get the corresponding KRS records and students
+#     students = []
+#     for detail in krs_details:
+#         krs = db.query(KRS).filter(KRS.id == detail.krs_id).first()
+#         if krs:
+#             # Only include students with APPROVED KRS status
+#             from krs_system.models import KRSStatusEnum
+#             if krs.status == KRSStatusEnum.APPROVED or str(krs.status).upper() == "APPROVED":
+#                 # Get student info
+#                 student = db.query(CalonMahasiswa).filter(CalonMahasiswa.nim == krs.nim).first()
+#                 if student:
+#                     students.append({
+#                         "nim": krs.nim,
+#                         "mahasiswa": {
+#                             "nama_lengkap": student.nama_lengkap
+#                         },
+#                         "semester": krs.semester,  # Include semester for consistency
+#                         "krs_detail_id": detail.id  # Include KRS detail ID
+#                     })
+
+#     return students
+@router.get("/course/{matakuliah_id}", response_model=List[dict])
+def get_students_by_course_endpoint(
+    matakuliah_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all students enrolled in a specific course with approved KRS.
+    Now includes full matakuliah info (sks, semester, kode_mk, nama_mk).
+    """
+
+    # --- CHECK COURSE EXISTS ---
+    course = (
+        db.query(Matakuliah)
+        .filter(Matakuliah.id == matakuliah_id)
+        .first()
+    )
+
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Mata kuliah dengan ID {matakuliah_id} tidak ditemukan"
+        )
+
+    # --- GET ALL KRS DETAILS BELONGING TO THIS COURSE ---
+    krs_details = (
+        db.query(KRSDetail)
+        .filter(KRSDetail.matakuliah_id == matakuliah_id)
+        .all()
+    )
+
+    students = []
+
+    for detail in krs_details:
+        krs = db.query(KRS).filter(KRS.id == detail.krs_id).first()
+        if not krs:
+            continue
+
+        # Check approved status
+        from krs_system.models import KRSStatusEnum
+        if krs.status not in [KRSStatusEnum.APPROVED, "APPROVED"]:
+            continue
+
+        # Get student
+        student = (
+            db.query(CalonMahasiswa)
+            .filter(CalonMahasiswa.nim == krs.nim)
+            .first()
+        )
+
+        if not student:
+            continue
+
+        # --- FULL RESPONSE INCLUDING MATAKULIAH INFO ---
+        students.append({
+            "nim": krs.nim,
+            "mahasiswa": {
+                "nama_lengkap": student.nama_lengkap
+            },
+            "semester_mahasiswa": krs.semester,  # tetap disertakan
+            "krs_detail_id": detail.id,
+
+            # 🔥 Tambahkan data matakuliah lengkap
+            "matakuliah": {
+                "id": course.id,
+                "kode_mk": course.kode,
+                "nama_mk": course.nama,
+                "sks": course.sks,
+                "semester": course.semester
+            }
+        })
+
+    return students
+
+
+@router.get("/kode/{kode_mk}", response_model=dict)
+def get_matakuliah_by_kode_endpoint(
+    kode_mk: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a specific matakuliah by its kode
+    """
+    # Find the course by kode
+    course = db.query(Matakuliah).filter(Matakuliah.kode == kode_mk).first()
+
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Mata kuliah dengan kode {kode_mk} tidak ditemukan"
+        )
+
+    return {
+        "id": course.id,
+        "kode": course.kode,
+        "nama": course.nama,
+        "sks": course.sks,
+        "semester": course.semester,
+        "created_at": str(course.created_at) if course.created_at else None
+    }
