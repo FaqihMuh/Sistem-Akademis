@@ -1,5 +1,5 @@
 NEW UPDATE: 
-PMB module!
+Nilai & Transkrip module!
 ###
 activate venv: 
 python -m venv .venv
@@ -23,3 +23,9 @@ demo 2:
 https://youtu.be/duyMB3HXTtk
 demo 3:
 https://youtu.be/BJBZHV-NEWM
+demo 4:
+https://youtu.be/5-DWBlZn8qo
+demo 5:
+https://youtu.be/aroRk8Bhn2Y
+demo 6:
+https://youtu.be/uU76TsOKbLI
