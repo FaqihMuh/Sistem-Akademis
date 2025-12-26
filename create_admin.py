@@ -1,6 +1,12 @@
-from database import SessionLocal
+import sys
+import os
+
+# Tambahkan path proyek ke sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from pmb_system.database import SessionLocal
 from auth_system.models import User
-from auth_system.services import get_password_hash
+from auth_system.services import hash_password
 
 db = SessionLocal()
 
@@ -15,7 +21,7 @@ def create_admin():
         print("Admin already exists.")
         return
 
-    hashed = get_password_hash(password)
+    hashed = hash_password(password)  # Changed from get_password_hash to hash_password
     admin = User(
         username=username,
         password_hash=hashed,
@@ -26,4 +32,5 @@ def create_admin():
     db.commit()
     print("Admin user created successfully!")
 
-create_admin()
+if __name__ == "__main__":
+    create_admin()

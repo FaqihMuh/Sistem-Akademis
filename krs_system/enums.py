@@ -12,3 +12,4 @@ class KRSStatusEnum(Enum):
     SUBMITTED = "SUBMITTED"
     APPROVED = "APPROVED"
     REVISION = "REVISION"
+    BLOCKED = "BLOCKED"

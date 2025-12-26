@@ -121,7 +121,42 @@ def check_role(required_role: str, user: dict):
 @dashboard_app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, user: dict = Depends(get_current_user_session)):
     check_role("ADMIN", user)
-    return templates.TemplateResponse("admin_dashboard.html", {"request": request, "user": user})
+
+    async with httpx.AsyncClient() as client:
+        headers = {"Authorization": f"Bearer {user['token']}"}
+
+        # Updated to use correct admin-specific endpoints from admin_api
+        pmb_resp = await client.get(f"{API_BASE_URL}/api/admin/pmb", headers=headers)
+        krs_resp = await client.get(f"{API_BASE_URL}/api/admin/krs", headers=headers)
+        schedule_resp = await client.get(f"{API_BASE_URL}/api/admin/schedule", headers=headers)
+        summary_resp = await client.get(f"{API_BASE_URL}/api/admin/summary", headers=headers)
+        payment_summary_resp = await client.get(f"{API_BASE_URL}/api/admin/payment-summary", headers=headers)
+
+        pmb_data = pmb_resp.json() if pmb_resp.status_code == 200 else []
+        krs_data = krs_resp.json() if krs_resp.status_code == 200 else []
+        schedule_data = schedule_resp.json() if schedule_resp.status_code == 200 else []
+        summary = summary_resp.json() if summary_resp.status_code == 200 else {}
+
+        # Get payment summary data
+        payment_summary = payment_summary_resp.json() if payment_summary_resp.status_code == 200 else {}
+        collection_rate_per_prodi = payment_summary.get("collection_rate_per_prodi", [])
+        monthly_payment_chart_data = payment_summary.get("monthly_payment_chart_data", [])
+
+    return templates.TemplateResponse(
+        "admin_dashboard.html",
+        {
+            "request": request,
+            "user": user,
+            "pmb_data": pmb_data,
+            "krs_data": krs_data,
+            "schedule_data": schedule_data,
+            "summary": summary,
+            "collection_rate_per_prodi": collection_rate_per_prodi,
+            "monthly_payment_chart_data": monthly_payment_chart_data
+        }
+    )
+
+
 
 
 # ----------------------------------
@@ -185,6 +220,14 @@ async def mahasiswa_dashboard(request: Request, user: dict = Depends(get_current
                 total_sks += grade.get('sks', 0)
                 jumlah_mk += 1
 
+        # Get student's billing information
+        try:
+            billing_response = await client.get(f"{API_BASE_URL}/api/payment/billing/student", params={"nim": nim}, headers=headers)
+            billing_data = billing_response.json()["billing_data"] if billing_response.status_code == 200 else []
+        except:
+            # Fallback to empty list if API call fails
+            billing_data = []
+
     return templates.TemplateResponse(
         "mahasiswa_dashboard.html",
         {
@@ -194,7 +237,8 @@ async def mahasiswa_dashboard(request: Request, user: dict = Depends(get_current
             "schedule_data": schedule_data,
             "ipk": ipk_data.get("ipk", 0.0),
             "total_sks": total_sks,
-            "jumlah_mk": jumlah_mk
+            "jumlah_mk": jumlah_mk,
+            "billing_data": billing_data
         }
     )
 

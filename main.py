@@ -13,6 +13,14 @@ from krs_system import models as krs_models
 from schedule_system import models as schedule_models
 from auth_system import models as auth_models
 from grades_system import models as grades_models  # Import grades models
+from payment_system import models as payment_models  # Import payment models
+from payment_system.scheduler import start_scheduler, stop_scheduler
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
+
+# Global scheduler variable
+scheduler = None
 
 
 # Create the main FastAPI app
@@ -52,9 +60,34 @@ app.include_router(gpa_router)  # Using default prefix /api/gpa from router
 from auth_system.routes import router as auth_router
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
+# Include payment router
+from payment_system.router import router as payment_router
+app.include_router(payment_router, prefix="/api/payment", tags=["Payment"])
+
+# Include admin API router
+from admin_api import router as admin_api_router
+app.include_router(admin_api_router, prefix="/api")  # Add /api prefix so endpoints become /api/admin/*
+
+
 # Mount the web dashboard app
 from web_dashboard.app import dashboard_app
 app.mount("/dashboard", dashboard_app)
+
+# Event handlers for scheduler
+@app.on_event("startup")
+def startup_event():
+    global scheduler
+    print("Starting scheduler...")
+    scheduler = start_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    global scheduler
+    if scheduler:
+        print("Stopping scheduler...")
+        stop_scheduler(scheduler)
+
 
 # Root endpoint
 @app.get("/")

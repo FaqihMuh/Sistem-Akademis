@@ -213,6 +213,58 @@
     </div>
 </div>
 
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Informasi Pembayaran SPP</h4>
+            </div>
+            <div class="card-body">
+                {% if billing_data %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Semester</th>
+                                <th>Total Tagihan</th>
+                                <th>Sudah Dibayar</th>
+                                <th>Sisa Tagihan</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for billing in billing_data %}
+                            <tr>
+                                <td>{{ billing.semester }}</td>
+                                <td>Rp {{ "{:,}".format(billing.total_amount) }}</td>
+                                <td>Rp {{ "{:,}".format(billing.paid_amount) }}</td>
+                                <td>Rp {{ "{:,}".format(billing.remaining) }}</td>
+                                <td>
+                                    {% if billing.status == 'paid' %}
+                                        <span class="badge bg-success">{{ billing.status }}</span>
+                                    {% elif billing.status == 'partial' %}
+                                        <span class="badge bg-warning">{{ billing.status }}</span>
+                                    {% elif billing.status == 'overdue' %}
+                                        <span class="badge bg-danger">{{ billing.status }}</span>
+                                    {% elif billing.status == 'unpaid' %}
+                                        <span class="badge bg-secondary">{{ billing.status }}</span>
+                                    {% else %}
+                                        <span class="badge bg-info">{{ billing.status }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>Belum ada tagihan SPP.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     // Load academic summary with server-side provided data when the page loads
     document.addEventListener('DOMContentLoaded', function() {
