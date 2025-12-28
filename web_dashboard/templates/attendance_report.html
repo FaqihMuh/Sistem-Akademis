@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Presensi - Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h2>Laporan Presensi Kelas</h2>
+
+            {# Inject current user object for client-side JS #}
+            <script id="current-user-json" type="application/json">
+  {{ user | default({}) | tojson | safe }}
+</script>
+
+<script>
+  // Parse JSON safely from the dedicated script tag
+  try {
+    const currentUserText = document.getElementById('current-user-json')?.textContent || '{}';
+    window.currentUserGlobal = JSON.parse(currentUserText);
+  } catch (e) {
+    console.error('Gagal parse currentUser JSON:', e);
+    window.currentUserGlobal = {};
+  }
+  console.log("Injected current user (dashboard):", window.currentUserGlobal);
+</script>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>Informasi Kelas</h4>
+                </div>
+                <div class="card-body">
+                    <div id="class-info">
+                        <p><strong>Mata Kuliah:</strong> <span id="course-name">{{ course_name or '-' }}</span></p>
+                        <p><strong>Kode:</strong> <span id="course-code">{{ course_code or '-' }}</span></p>
+                        <p><strong>Dosen:</strong> <span id="lecturer-name">{{ lecturer_name or '-' }}</span></p>
+                        <p><strong>Total Mahasiswa:</strong> <span id="total-students">{{ total_students or 0 }}</span></p>
+                        <p><strong>Total Sesi:</strong> <span id="total-sessions">{{ total_sessions or 0 }}</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4>Daftar Presensi Mahasiswa</h4>
+                    <button id="export-csv" class="btn btn-success">
+                        <i class="fas fa-file-csv"></i> Export CSV
+                    </button>
+
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover" id="attendance-table">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>NIM</th>
+                                    <th>Nama Mahasiswa</th>
+                                    <th>Hadir</th>
+                                    <th>Total Sesi</th>
+                                    <th>Persentase</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendance-tbody">
+                                <!-- Data will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4>Early Warning & Insight AI</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5>Rata-rata Kehadiran Kelas</h5>
+                                    <h3 id="class-avg-attendance">0%</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Insight Kelas</h5>
+                            <ul id="class-insights">
+                                <!-- Insights will be populated dynamically -->
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Peringatan Mahasiswa</h5>
+                            <ul id="student-warnings">
+                                <!-- Student warnings will be populated dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Use injected global user object
+    const currentUser = window.currentUserGlobal || {};
+    console.log('currentUser in JS:', currentUser);
+
+    // Determine Bearer token (if backend provided one)
+    let token = currentUser.token || currentUser.access_token || currentUser.bearer || '';
+    if (token && !token.startsWith('Bearer ')) {
+        token = 'Bearer ' + token;
+    }
+
+    // Use schedule ID from server template context
+    const scheduleId = {{ schedule_id }};
+
+    if (!scheduleId) {
+        document.getElementById('attendance-tbody').innerHTML = '<tr><td colspan="6" class="text-danger">ID jadwal tidak ditemukan</td></tr>';
+        return;
+    }
+
+    // Helper: request headers
+    function authHeaders(contentType = 'application/json') {
+        const headers = {};
+        if (contentType) headers['Content-Type'] = contentType;
+        if (token) headers['Authorization'] = token;
+        return headers;
+    }
+
+    // Function to load attendance report
+    async function loadAttendanceReport() {
+        try {
+            const response = await fetch(`/api/attendance/report/schedule/${scheduleId}`, {
+                headers: authHeaders(),
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error(`Gagal mengambil laporan presensi: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const reportData = result.data;
+
+            if (!reportData || !reportData.students) {
+                throw new Error('Data laporan tidak valid');
+            }
+
+            // Update class info
+            document.getElementById('course-name').textContent = reportData.course_name;
+            document.getElementById('course-code').textContent = reportData.course_code;
+            document.getElementById('lecturer-name').textContent = reportData.lecturer_name;
+            document.getElementById('total-students').textContent = reportData.total_students;
+            document.getElementById('total-sessions').textContent = reportData.total_sessions;
+
+            // Populate attendance table
+            const tbody = document.getElementById('attendance-tbody');
+            tbody.innerHTML = '';
+
+            reportData.students.forEach(student => {
+                const row = document.createElement('tr');
+                
+                // Determine status badge class
+                let statusClass = '';
+                let statusText = student.status;
+                if (student.status === 'AMAN') {
+                    statusClass = 'badge bg-success';
+                } else if (student.status === 'PERINGATAN') {
+                    statusClass = 'badge bg-warning text-dark';
+                } else if (student.status === 'KRITIS') {
+                    statusClass = 'badge bg-danger';
+                }
+
+                row.innerHTML = `
+                    <td>${student.nim}</td>
+                    <td>${student.nama}</td>
+                    <td>${student.hadir}</td>
+                    <td>${student.total_sesi}</td>
+                    <td>${student.persentase}%</td>
+                    <td><span class="${statusClass}">${student.status}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            if (reportData.students.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">Tidak ada data mahasiswa</td></tr>';
+            }
+
+        } catch (error) {
+            console.error('Error loading attendance report:', error);
+            document.getElementById('attendance-tbody').innerHTML = 
+                `<tr><td colspan="6" class="text-danger">Gagal memuat data: ${error.message}</td></tr>`;
+        }
+    }
+
+    // Function to load early warning insights
+    async function loadEarlyWarningInsights() {
+        try {
+            const response = await fetch(`/api/attendance/insights/schedule/${scheduleId}`, {
+                headers: authHeaders(),
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error(`Gagal mengambil insight: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const insightData = result.data;
+
+            if (!insightData) {
+                throw new Error('Data insight tidak valid');
+            }
+
+            // Update class average attendance
+            document.getElementById('class-avg-attendance').textContent = `${insightData.class_attendance_avg}%`;
+
+            // Populate class insights
+            const classInsightsList = document.getElementById('class-insights');
+            classInsightsList.innerHTML = '';
+            insightData.insights.forEach(insight => {
+                const li = document.createElement('li');
+                li.textContent = insight;
+                classInsightsList.appendChild(li);
+            });
+
+            // Populate student warnings
+            const studentWarningsList = document.getElementById('student-warnings');
+            studentWarningsList.innerHTML = '';
+            insightData.student_warnings.forEach(warning => {
+                const li = document.createElement('li');
+                
+                let warningClass = '';
+                if (warning.warning_level === 'KRITIS') {
+                    warningClass = 'text-danger';
+                } else if (warning.warning_level === 'PERINGATAN') {
+                    warningClass = 'text-warning';
+                }
+                
+                li.innerHTML = `
+                    <span class="${warningClass}">
+                        <strong>${warning.nama} (${warning.nim})</strong>: ${warning.warning_message}
+                    </span>
+                `;
+                studentWarningsList.appendChild(li);
+            });
+
+            if (insightData.student_warnings.length === 0) {
+                studentWarningsList.innerHTML = '<li class="text-muted">Tidak ada mahasiswa yang perlu diperingatkan</li>';
+            }
+
+        } catch (error) {
+            console.error('Error loading early warning insights:', error);
+            document.getElementById('class-insights').innerHTML = 
+                `<li class="text-danger">Gagal memuat insight: ${error.message}</li>`;
+        }
+    }
+
+    // Function to export CSV
+    const exportBtn = document.getElementById('export-csv');
+    if (!exportBtn) return;
+
+    exportBtn.addEventListener('click', exportCSV);
+
+    async function exportCSV() {
+        try {
+            const response = await fetch(
+                `/api/attendance/report/schedule/${scheduleId}/export/csv`,
+                {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'include'
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Gagal mengunduh CSV: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance_report_schedule_${scheduleId}_${new Date()
+                .toISOString()
+                .slice(0, 19)
+                .replace(/:/g, '-')}.csv`;
+
+            document.body.appendChild(a);
+            a.click();
+
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+        } catch (error) {
+            console.error('Error exporting CSV:', error);
+            alert('Gagal mengunduh file CSV: ' + error.message);
+        }
+    }
+
+    // Load data when page loads
+    loadAttendanceReport();
+    loadEarlyWarningInsights();
+});
+</script>
+
+{% endblock %}

@@ -317,3 +317,82 @@ async def mahasiswa_grades_page(request: Request, user: dict = Depends(get_curre
 async def dosen_grade_history_page(request: Request, user: dict = Depends(get_current_user_session)):
     check_role("DOSEN", user)
     return templates.TemplateResponse("dosen/grade_history.html", {"request": request, "user": user})
+
+
+@dashboard_app.get("/dosen/presensi/{schedule_id}", response_class=HTMLResponse)
+async def dosen_presensi_page(
+    request: Request,
+    schedule_id: int,
+    user: dict = Depends(get_current_user_session)
+):
+    check_role("DOSEN", user)
+
+    async with httpx.AsyncClient() as client:
+        headers = {"Authorization": f"Bearer {user['token']}"}
+
+        # Get schedule information
+        schedule_response = await client.get(
+            f"{API_BASE_URL}/api/schedule/{schedule_id}",
+            headers=headers
+        )
+
+        schedule_data = {}
+        if schedule_response.status_code == 200:
+            schedule_data = schedule_response.json()
+
+    return templates.TemplateResponse(
+        "dosen_presensi.html",
+        {
+            "request": request,
+            "user": user,
+            "schedule_id": schedule_id,
+            "schedule_data": schedule_data
+        }
+    )
+
+
+@dashboard_app.get("/dosen/attendance/report/{schedule_id}", response_class=HTMLResponse)
+async def attendance_report_page(
+    request: Request,
+    schedule_id: int,
+    user: dict = Depends(get_current_user_session)
+):
+    check_role("DOSEN", user)
+
+    async with httpx.AsyncClient() as client:
+        headers = {"Authorization": f"Bearer {user['token']}"}
+
+        # Get schedule information
+        schedule_response = await client.get(
+            f"{API_BASE_URL}/api/schedule/{schedule_id}",
+            headers=headers
+        )
+
+        schedule_data = {}
+        if schedule_response.status_code == 200:
+            schedule_data = schedule_response.json()
+
+        # Get attendance report data
+        report_response = await client.get(
+            f"{API_BASE_URL}/api/attendance/report/schedule/{schedule_id}",
+            headers=headers
+        )
+
+        report_data = {}
+        if report_response.status_code == 200:
+            report_data = report_response.json().get("data", {})
+
+    return templates.TemplateResponse(
+        "attendance_report.html",
+        {
+            "request": request,
+            "user": user,
+            "schedule_id": schedule_id,
+            "course_name": report_data.get("course_name", ""),
+            "course_code": report_data.get("course_code", ""),
+            "lecturer_name": report_data.get("lecturer_name", ""),
+            "total_students": report_data.get("total_students", 0),
+            "total_sessions": report_data.get("total_sessions", 0),
+            "schedule_data": schedule_data
+        }
+    )

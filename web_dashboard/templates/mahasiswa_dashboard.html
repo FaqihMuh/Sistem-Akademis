@@ -6,6 +6,24 @@
 <div class="row">
     <div class="col-12">
         <h2>Student Dashboard</h2>
+
+        {# Inject current user object for client-side JS #}
+        <script id="current-user-json" type="application/json">
+  {{ user | default({}) | tojson | safe }}
+</script>
+
+<script>
+  // Parse JSON safely from the dedicated script tag
+  try {
+    const currentUserText = document.getElementById('current-user-json')?.textContent || '{}';
+    window.currentUserGlobal = JSON.parse(currentUserText);
+  } catch (e) {
+    console.error('Gagal parse currentUser JSON:', e);
+    window.currentUserGlobal = {};
+  }
+  console.log("Injected current user (dashboard):", window.currentUserGlobal);
+</script>
+
         <div class="card mb-4">
             <div class="card-header">
                 <h4>Biodata Mahasiswa</h4>
@@ -166,6 +184,9 @@
                     <a href="/dashboard/mahasiswa/grades" class="btn btn-primary">
                         <i class="fas fa-file-alt me-1"></i> Lihat Nilai
                     </a>
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#qrScannerModal">
+                        <i class="fas fa-qrcode me-1"></i> Presensi (Scan QR)
+                    </button>
                 </div>
             </div>
         </div>
@@ -265,6 +286,31 @@
     </div>
 </div>
 
+<!-- QR Scanner Modal -->
+<div class="modal fade" id="qrScannerModal" tabindex="-1" aria-labelledby="qrScannerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="qrScannerModalLabel">Presensi (Scan QR)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="scanner-container">
+                    <div id="qr-reader" style="width: 100%;"></div>
+                    <div id="qr-reader-results" class="mt-2"></div>
+                    <div id="scanner-status" class="mt-2 text-center">
+                        <p class="text-info">Arahkan kamera ke QR Code presensi</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
     // Load academic summary with server-side provided data when the page loads
     document.addEventListener('DOMContentLoaded', function() {
@@ -292,5 +338,87 @@
             document.getElementById('jumlahMk').textContent = '-';
         }
     });
+
+    let html5QrcodeScanner = null;
+
+    // Modal opened
+    document.getElementById('qrScannerModal').addEventListener('shown.bs.modal', function () {
+        initializeQRScanner();
+    });
+
+    // Modal closed
+    document.getElementById('qrScannerModal').addEventListener('hidden.bs.modal', function () {
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.clear().catch(() => {});
+            html5QrcodeScanner = null;
+        }
+    });
+
+    function initializeQRScanner() {
+        const currentUser = window.currentUserGlobal || {};
+        console.log('currentUser in QR scanner:', currentUser);
+
+        const nim = currentUser.nim;
+        if (!nim) {
+            document.getElementById('scanner-status').innerHTML =
+                '<p class="text-danger">NIM tidak ditemukan. Silakan login ulang.</p>';
+            return;
+        }
+
+        let token = currentUser.token || '';
+        if (token && !token.startsWith('Bearer ')) {
+            token = 'Bearer ' + token;
+        }
+
+        document.getElementById('scanner-status').innerHTML =
+            '<p class="text-info">Mengaktifkan kamera...</p>';
+
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "qr-reader",
+            {
+                fps: 10,
+                qrbox: 250
+            },
+            false
+        );
+
+        html5QrcodeScanner.render(
+            (decodedText) => {
+                // 🔴 decodedText = isi QR CODE
+                html5QrcodeScanner.clear();
+
+                document.getElementById('scanner-status').innerHTML =
+                    '<p class="text-info">Memproses presensi...</p>';
+
+                fetch('/api/attendance/scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': token
+                    },
+                    body: JSON.stringify({
+                        qr_token: decodedText, // ✅ FIX
+                        nim: nim
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('scanner-status').innerHTML =
+                            '<p class="text-success">Presensi berhasil ✅</p>';
+                    } else {
+                        document.getElementById('scanner-status').innerHTML =
+                            `<p class="text-danger">Gagal: ${data.detail || data.message}</p>`;
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('scanner-status').innerHTML =
+                        '<p class="text-danger">Gagal mengirim data ke server</p>';
+                });
+            },
+            () => {} // ignore scan failure
+        );
+    }
 </script>
 {% endblock %}

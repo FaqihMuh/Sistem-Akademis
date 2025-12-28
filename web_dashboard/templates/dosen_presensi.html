@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Presensi Dosen - Academic Dashboard{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h2>Presensi Dosen</h2>
+
+            {# Inject current user object for client-side JS #}
+            <script id="current-user-json" type="application/json">
+  {{ user | default({}) | tojson | safe }}
+</script>
+
+<script>
+  // Parse JSON safely from the dedicated script tag
+  try {
+    const currentUserText = document.getElementById('current-user-json')?.textContent || '{}';
+    window.currentUserGlobal = JSON.parse(currentUserText);
+  } catch (e) {
+    console.error('Gagal parse currentUser JSON:', e);
+    window.currentUserGlobal = {};
+  }
+  console.log("Injected current user (dashboard):", window.currentUserGlobal);
+</script>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>Informasi Jadwal</h4>
+                </div>
+                <div class="card-body">
+                    <div id="schedule-info">
+                        <p><strong>Mata Kuliah:</strong> <span id="course-name">{{ schedule_data.nama_mk or schedule_data.kode_mk or '-' }}</span></p>
+                        <p><strong>Kelas:</strong> <span id="class-name">{{ schedule_data.kelas or '-' }}</span></p>
+                        <p><strong>Semester:</strong> <span id="semester">{{ schedule_data.semester or '-' }}</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4>Sesi Presensi (1-16)</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="session-grid">
+                        <!-- Session cards will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Use injected global user object
+    const currentUser = window.currentUserGlobal || {};
+    console.log('currentUser in JS:', currentUser);
+
+    // Determine Bearer token (if backend provided one)
+    let token = currentUser.token || currentUser.access_token || currentUser.bearer || '';
+    if (token && !token.startsWith('Bearer ')) {
+        token = 'Bearer ' + token;
+    }
+
+    // Use schedule ID from server template context
+    const scheduleId = {{ schedule_id }};
+
+    if (!scheduleId) {
+        document.getElementById('session-grid').innerHTML = '<div class="col-12"><p class="text-danger">ID jadwal tidak ditemukan</p></div>';
+        return;
+    }
+
+    // Helper: request headers
+    function authHeaders(contentType = 'application/json') {
+        const headers = {};
+        if (contentType) headers['Content-Type'] = contentType;
+        if (token) headers['Authorization'] = token;
+        return headers;
+    }
+    // Function to load attendance sessions
+    async function loadAttendanceSessions() {
+    try {
+       
+
+        const response = await fetch(`/api/attendance/session/schedule/${scheduleId}`, {
+            headers: authHeaders(),
+            credentials: 'include'
+        });
+
+        let sessions = [];
+
+        if (response.ok) {
+            const result = await response.json();
+            sessions = result.data || [];
+        } else {
+            console.warn('Gagal mengambil sesi presensi:', response.status);
+        }
+
+        const activeSessionsMap = {};
+        sessions.forEach(session => {
+            activeSessionsMap[session.session_number] = session;
+        });
+
+        const sessionGrid = document.getElementById('session-grid');
+        sessionGrid.innerHTML = '';
+
+        for (let sessionNumber = 1; sessionNumber <= 16; sessionNumber++) {
+            const sessionData = activeSessionsMap[sessionNumber];
+            const isActive = sessionData && sessionData.is_active;
+
+            const colDiv = document.createElement('div');
+            colDiv.className = 'col-md-3 col-sm-4 col-6 mb-3';
+
+            if (isActive) {
+                colDiv.innerHTML = `
+                    <div class="card h-100 border-success">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Sesi ${sessionNumber}</h5>
+                            <p class="text-success">QR aktif</p>
+                            <div id="qrcode-${sessionNumber}" class="mb-2"></div>
+                            <small class="text-muted">
+                                ${sessionData.qr_token.substring(0, 8)}...
+                            </small>
+                        </div>
+                    </div>
+                `;
+                sessionGrid.appendChild(colDiv);
+
+                setTimeout(() => {
+                    generateQRCode(sessionData.qr_token, sessionNumber);
+                }, 100);
+
+            } else {
+                colDiv.innerHTML = `
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Sesi ${sessionNumber}</h5>
+                            <button class="btn btn-primary btn-generate-qr"
+                                data-session="${sessionNumber}">
+                                Generate QR
+                            </button>
+                        </div>
+                    </div>
+                `;
+                sessionGrid.appendChild(colDiv);
+            }
+        }
+
+        document.querySelectorAll('.btn-generate-qr').forEach(btn => {
+            btn.addEventListener('click', () => {
+                generateAttendanceSession(scheduleId, btn.dataset.session);
+            });
+        });
+
+    } catch (error) {
+        console.error('Error loading attendance sessions:', error);
+        document.getElementById('session-grid').innerHTML =
+            '<p class="text-danger">Gagal memuat sesi presensi</p>';
+    }
+    
+}
+
+    // Function to generate QR code using a simple library approach
+    function generateQRCode(token, sessionNumber) {
+    const qrContainer = document.getElementById(`qrcode-${sessionNumber}`);
+    qrContainer.innerHTML = ""; // clear
+
+        new QRCode(qrContainer, {
+            text: token,
+            width: 128,
+            height: 128
+        });
+    }
+
+
+    // Function to generate attendance session
+    async function generateAttendanceSession(scheduleId, sessionNumber) {
+        try {
+            const response = await fetch('/api/attendance/session/generate', {
+                method: 'POST',
+                headers: authHeaders(),
+                credentials: 'include',
+                body: JSON.stringify({
+                    schedule_id: Number(scheduleId),
+                    session_number: Number(sessionNumber)
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.success === false) {
+                throw new Error(result.message || 'Gagal membuat QR');
+            }
+
+            alert(`QR untuk Sesi ${sessionNumber} berhasil dibuat`);
+            loadAttendanceSessions();
+
+        } catch (error) {
+            console.error('Error generating attendance session:', error);
+            alert('Gagal membuat QR: ' + error.message);
+        }
+    }
+
+
+    // Load data when page loads
+    loadAttendanceSessions();
+
+
+    // Auto refresh QR setiap 60 detik
+setInterval(async () => {
+    console.log("⏱ Auto refresh QR aktif...");
+
+    try {
+        const response = await fetch(`/api/attendance/session/schedule/${scheduleId}`, {
+            headers: authHeaders(),
+            credentials: 'include'
+        });
+
+        if (!response.ok) return;
+
+        const result = await response.json();
+        const sessions = result.data || [];
+
+        for (const session of sessions) {
+            if (session.is_active) {
+                console.log(`🔄 Refresh QR sesi ${session.session_number}`);
+
+                await fetch('/api/attendance/session/generate', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        schedule_id: scheduleId,
+                        session_number: session.session_number
+                    })
+                });
+            }
+        }
+
+        // Reload UI setelah refresh
+        loadAttendanceSessions();
+
+    } catch (err) {
+        console.error("Auto refresh QR gagal:", err);
+    }
+}, 60000); // 60 detik
+
+});
+</script>
+
+{% endblock %}

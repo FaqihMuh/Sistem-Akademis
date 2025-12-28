@@ -88,12 +88,18 @@
                                     <td>{{ schedule.kapasitas_kelas }}</td>
                                     <td>{{ schedule.kelas if schedule.kelas else '-' }}</td>
                                     <td>
-                                        <button class="btn btn-primary btn-sm btn-detail-nilai"
+                                        <button class="btn btn-primary btn-sm btn-detail-nilai me-1"
                                                 data-kode-mk="{{ schedule.kode_mk }}"
                                                 data-nama-mk="{{ schedule.nama_mk if schedule.nama_mk else schedule.kode_mk }}"
                                                 data-id="{{ schedule.id }}">
                                             <i class="fas fa-list"></i> Detail Nilai
                                         </button>
+                                        <a href="/dashboard/dosen/presensi/{{ schedule.id }}" class="btn btn-warning btn-sm me-1">
+                                            <i class="fas fa-qrcode"></i> Presensi
+                                        </a>
+                                        <a href="/dashboard/dosen/attendance/report/{{ schedule.id }}" class="btn btn-info btn-sm">
+                                            <i class="fas fa-chart-bar"></i> Laporan
+                                        </a>
                                     </td>
                                 </tr>
                                 {% endfor %}

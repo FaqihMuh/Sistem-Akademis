@@ -14,6 +14,7 @@ from schedule_system import models as schedule_models
 from auth_system import models as auth_models
 from grades_system import models as grades_models  # Import grades models
 from payment_system import models as payment_models  # Import payment models
+from attendance_system import models as attendance_models  # Import attendance models
 from payment_system.scheduler import start_scheduler, stop_scheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -63,6 +64,14 @@ app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 # Include payment router
 from payment_system.router import router as payment_router
 app.include_router(payment_router, prefix="/api/payment", tags=["Payment"])
+
+# Include attendance router
+from attendance_system.router import router as attendance_router
+app.include_router(attendance_router)  # Using default prefix /api/attendance from router
+
+# Include attendance report router
+from attendance_system.attendance_report import router as attendance_report_router
+app.include_router(attendance_report_router)  # Using default prefix /api/attendance from router
 
 # Include admin API router
 from admin_api import router as admin_api_router
