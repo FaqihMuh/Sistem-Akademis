@@ -394,3 +394,2527 @@ Aturan:
 
 fix this error : [paste pesan error]
 
+
+####################################
+MODUL KRS
+####################################
+
+1.
+Tambahkan modul baru bernama `krs_system` yang akan menggunakan database yang sama dengan modul PMB (gunakan Base dan Session dari app.database).
+
+Buat model SQLAlchemy untuk sistem KRS dengan tabel berikut:
+- matakuliah: id, kode (unique), nama, sks, semester, hari, jam_mulai, jam_selesai
+- prerequisite: id, matakuliah_id, prerequisite_id (relasi self-reference)
+- krs: id, nim, semester, status (Enum: DRAFT, SUBMITTED, APPROVED, REVISION), dosen_pa_id (nullable)
+- krs_detail: id, krs_id, matakuliah_id
+
+Gunakan relasi:
+- krs_detail.krs_id → krs.id
+- krs_detail.matakuliah_id → matakuliah.id
+- prerequisite.matakuliah_id dan prerequisite.prerequisite_id → matakuliah.id
+
+Tambahkan file migration Alembic untuk skema ini.
+Gunakan versi Python, FastAPI, dan SQLAlchemy yang sesuai
+
+
+
+
+2.
+Buat file untuk mengelola state KRS.
+Buat enum `KRSStatus` dengan nilai: DRAFT, SUBMITTED, APPROVED, REVISION.
+
+Tambahkan fungsi transition(current_status, action) yang mengatur transisi valid:
+- DRAFT → SUBMITTED (aksi: submit)
+- SUBMITTED → APPROVED (aksi: approve)
+- SUBMITTED → REVISION (aksi: reject)
+- REVISION → SUBMITTED (aksi: resubmit)
+Transisi lain harus raise ValueError("Transisi tidak valid dari {status} dengan aksi {action}")
+
+
+
+
+3.
+Buat file untuk validasi KRS dengan pola Chain of Responsibility.
+Buat abstract class `Validator` dengan method `validate(krs_id: int, db: Session) -> ValidationResult`.
+`ValidationResult` berisi: { success: bool, message: str }.
+
+Implementasikan empat validator:
+1. SKSValidator → total SKS ≤ 24
+2. PrerequisiteValidator → semua prasyarat matakuliah sudah lulus (nilai >= C)
+3. ConflictValidator → tidak boleh bentrok hari + jam
+4. DuplicateValidator → tidak boleh mata kuliah sama diambil dua kali
+
+Tambahkan fungsi `run_validations(krs_id, db)` yang menjalankan semua validator secara berurutan dan berhenti saat ada yang gagal.
+
+
+
+
+
+4.
+Buat file untuk mengelola logika KRS.
+
+Tambahkan fungsi:
+- add_course(nim, kode_mk, semester, db)
+- remove_course(nim, kode_mk, db)
+- validate_krs(nim, db)
+- submit_krs(nim, db)
+- approve_krs(nim, dosen_pa_id, db)
+
+Gunakan transaksi database (`with db.begin():`) untuk menjaga konsistensi.
+Gunakan `run_validations()` sebelum submit KRS.
+Gunakan `transition()` dari state_machine untuk perubahan status.
+
+
+
+
+
+5.
+Buat file yang berisi endpoint FastAPI berikut:
+
+1. POST /api/krs/{nim}/add → tambah mata kuliah
+2. DELETE /api/krs/{nim}/remove → hapus mata kuliah
+3. POST /api/krs/{nim}/submit → submit KRS
+4. POST /api/krs/{nim}/approve → approve KRS
+5. GET /api/krs/{nim} → tampilkan detail KRS dan status
+
+Gunakan dependency database session dari app.database.
+Gunakan model dari modul KRS dan modul PMB (untuk validasi NIM).
+Tambahkan error handling (404 jika mahasiswa/KRS tidak ditemukan, 400 untuk validasi gagal).
+
+
+
+
+
+
+6.
+Buat file `main.py` di root project agar menjadi entry point gabungan untuk seluruh sistem akademik.
+
+Spesifikasi:
+- Inisialisasi satu FastAPI app bernama `app`
+- Tambahkan middleware CORS untuk akses frontend
+- Tambahkan router:
+  app.include_router(pmb_router, prefix="/api/pmb", tags=["PMB"])
+  app.include_router(krs_router, prefix="/api/krs", tags=["KRS"])
+- Endpoint root ("/") mengembalikan JSON:
+  {"message": "Sistem Akademis API (PMB + KRS) is running"}
+
+Pastikan database Base dan Session digunakan bersama (app.database). dan perbaharui endpoint "/docs" agar swagger UI bisa digunakan untuk modul PMB dan KRS
+
+
+
+
+
+7.
+Buat file untuk menguji modul KRS menggunakan pytest dan SQLite in-memory.
+
+Tambahkan pengujian:
+1. test_add_course_success → tambah MK valid
+2. test_add_course_duplicate → gagal karena double enrollment
+3. test_add_course_conflict → gagal karena bentrok jadwal
+4. test_add_course_unmet_prerequisite → gagal karena prasyarat belum terpenuhi
+5. test_submit_and_approve_flow → validasi transisi state machine
+6. property-based test: total SKS tidak melebihi 24 menggunakan hypothesis
+
+
+
+
+
+
+##########################################
+MODUL JADWAL & RUANGAN
+##########################################
+
+tambahkan modul baru bernama schedule_system ke dalam project ini.
+Modul ini harus berada di folder schedule_system/, memanfaatkan database shared dari pmb_local.db, dan mengikuti struktur modul sebelumnya (PMB dan KRS).
+
+
+
+##########
+Buatkan file model SQLAlchemy berikut di folder schedule_system/models.py:
+Tabel:
+
+ruangan
+
+ -id (PK)
+
+ -kode (unique)
+
+ -nama
+
+ -kapasitas
+
+jadwal
+
+ -id (PK)
+
+ -matakuliah_id (FK → matakuliah.id)
+
+ -ruangan_id (FK → ruangan.id)
+
+ -dosen_id (int, nullable)
+
+ -hari (Enum: Senin–Sabtu)
+
+ -jam_mulai (Time)
+
+ -jam_selesai (Time)
+
+Relationship:
+
+ -jadwal → matakuliah (one-to-many)
+
+ -jadwal → ruangan (one-to-many)
+
+Tambahkan Alembic migration otomatis untuk ketiga tabel tersebut.
+
+
+
+
+
+##########
+Buat file schedule_system/services.py berisi:
+
+A. CRUD jadwal
+
+create_schedule()
+
+update_schedule()
+
+delete_schedule()
+
+Semua memakai transaksi:
+
+with db.begin():
+
+B. DETEKSI BENTROK 3 DIMENSI
+
+Buat fungsi bernama:
+
+detect_schedule_conflicts(jadwal_list) → list[ConflictResult]
+
+Input jadwal_list berisi elemen:
+
+{
+  id,
+  hari,
+  jam_mulai,
+  jam_selesai,
+  ruangan_id,
+  dosen_id
+}
+
+
+Output list of conflict:
+
+{
+   "type": "room_conflict" | "lecturer_conflict" | "time_overlap",
+   "schedule_1": {},
+   "schedule_2": {}
+}
+
+Algoritma (WAJIB QWEN PATUHI):
+
+Untuk setiap pair jadwal (i,j):
+
+1. Room conflict
+
+ -hari sama
+
+ -waktu overlap
+
+ -ruangan sama
+
+2. Lecturer conflict
+
+ -hari sama
+
+ -waktu overlap
+
+ -dosen sama
+
+Time overlap only
+
+ -hari sama
+
+ -jam_overlap == true
+
+Optimisasi: Gunakan struktur interval tree untuk mengecek overlap time.
+
+C. CAPACITY CHECK
+
+Tambahkan fungsi:
+
+check_capacity(jadwal, db)
+
+Kriteria:
+
+ -total mahasiswa yang mengambil MK (query dari KRS)
+
+ -harus <= kapasitas ruangan
+Jika melebihi → return False + alas an
+
+
+
+
+##########
+Buat folder schedule_system/observer/ dengan file:
+
+subject.py
+class ScheduleSubject:
+    observers = []
+    attach()
+    detach()
+    notify(event_type, schedule_data)
+
+
+observers.py
+
+Tiga observer:
+
+1. StudentObserver
+
+2. LecturerObserver
+
+3. AdminObserver
+
+Masing-masing update():
+
+ -kirim notifikasi via log (simulasi Email/SMS/Push)
+
+ -semua notifikasi dicetak dengan format:
+
+[NOTIFY] <role> menerima event <event_type> untuk jadwal <id>
+
+Trigger Notifikasi
+
+Di services create/update/delete jadwal, panggil:
+
+subject.notify("SCHEDULE_CHANGED", jadwal_data)
+
+
+
+
+
+##########
+Buat fungsi:
+
+invalidate_affected_krs(jadwal, db)
+
+Ketentuan:
+
+ -Jika jadwal berubah (ruangan, dosen, jam), maka:
+
+ 1. Cari seluruh KRS yang memiliki matakuliah tersebut
+
+2. Set status KRS menjadi "REVISION"
+
+3. Simpan ke DB
+
+Panggil fungsi ini otomatis ketika jadwal di-update.
+
+
+
+
+
+##########
+Buat folder schedule_system/endpoints.py berisi:
+
+Endpoint:
+
+1. POST /api/schedule/create
+
+2. PUT /api/schedule/{id}/update
+
+3. DELETE /api/schedule/{id}/delete
+
+4. GET /api/schedule/conflicts
+
+5. response: semua jadwal bentrok
+
+6. GET /api/schedule/rooms
+
+7. GET /api/schedule/{id}
+
+Gunakan:
+
+router = APIRouter(prefix="/api/schedule", tags=["Schedule"])
+kumpulkan endpoint nya pada swagger UI di /docs Bersama modul PMB dan KRS
+
+
+
+
+
+##########
+Buat file schedule_system/ai_rescheduler.py berisi:
+
+Fungsi:
+def suggest_alternative_slots(conflict, available_slots, db):
+
+
+Qwen harus membangun logika:
+
+Kriteria saran:
+
+1. kapasitas ruangan cukup
+
+2. tidak bentrok dengan jadwal dosen
+
+3. minimal disruption untuk mahasiswa
+
+	-prioritas jam pagi → siang → sore
+
+4. hasilnya list 3 rekomendasi:
+
+[
+ {hari, jam_mulai, jam_selesai, ruangan, reason},
+ ...
+]
+
+
+
+####################################################
+MODUL NILAI & TRANSKRIP
+####################################################
+
+Saya ingin menambahkan modul baru bernama “Modul Nilai & Transkrip” pada sistem FastAPI saya.
+
+Tolong buat:
+
+====================================================
+1. STRUKTUR DATABASE BARU
+====================================================
+
+Buatkan tabel berikut (SQLAlchemy ORM) pada database project pmb_local.db:
+
+A. grades (nilai per mahasiswa per mata kuliah)
+- id (PK)
+- nim (string, FK ke mahasiswa)
+- matakuliah_id (int, FK ke tabel matakuliah)
+- semester (string / int)
+- nilai_huruf (A/B/C/D/E)
+- nilai_angka (float: A=4.0, B=3.0, C=2.0, D=1.0, E=0)
+- sks (int)
+- dosen_id (FK ke tabel dosen)
+- created_at
+- updated_at
+
+Business Rule:
+- nilai_angka dihitung otomatis dari nilai_huruf
+- nilai tidak boleh diinput jika presensi < 75% (berikan placeholder kolom presensi atau ambil dari tabel presensi jika sudah ada)
+
+B. grade_history (audit trail)
+- id (PK)
+- grade_id (FK ke grades.id)
+- old_value (huruf/angka)
+- new_value
+- changed_by (username dosen)
+- changed_at (timestamp)
+- reason (string)
+
+Rule:
+- setiap UPDATE pada grades → otomatis insert ke grade_history
+
+====================================================
+2. ENDPOINT DASAR (REST API)
+====================================================
+
+Buatkan router FastAPI baru:
+router = APIRouter(prefix="/api/grades", tags=["Grades"])
+
+Endpoint yang harus dibuat:
+
+1. POST /api/grades/input
+   - Dosen input nilai mahasiswa untuk 1 mata kuliah
+   - Validasi:
+     • nilai_huruf valid (A/B/C/D/E)
+     • presensi >= 75%
+     • matakuliah_id harus diajar oleh dosen tersebut
+     • jika nilai sebelumnya ada, lakukan UPDATE dan catat ke grade_history
+   - Return: data nilai lengkap
+
+2. GET /api/grades/student/{nim}
+   - Ambil seluruh nilai mahasiswa, lengkap dengan:
+     • kode mk
+     • nama mk
+     • sks
+     • nilai_huruf
+     • nilai_angka
+     • semester
+   - Dipakai untuk dashboard mahasiswa dan dosen
+
+3. GET /api/grades/course/{matakuliah_id}
+   - Ambil nilai semua mahasiswa dalam 1 mata kuliah
+   - Digunakan di dashboard dosen
+
+4. PUT /api/grades/{id}
+   - Edit nilai
+   - Wajib tulis audit trail:
+     old_value → new_value
+     changed_by → dosen
+     reason → input dari user
+
+5. DELETE /api/grades/{id}
+   - Hapus nilai
+
+====================================================
+3. INTEGRASI DENGAN DASHBOARD
+====================================================
+A. Dashboard DOSEN:
+   - Dosen hanya bisa CRUD nilai untuk matakuliah yang dia ajar
+   - Buat folder web_dashboard/templates/dosen/grades.html
+   - Buatkan JS fetch untuk panggil endpoint
+
+B. Dashboard MAHASISWA:
+   - Mahasiswa hanya bisa melihat nilai miliknya
+   - Endpoint dipanggil: GET /api/grades/student/{nim}
+
+====================================================
+4. SINKRONISASI DENGAN SWAGGER
+====================================================
+Pastikan semua endpoint muncul otomatis di Swagger UI.
+
+====================================================
+5. REQUIREMENTS TAMBAHAN
+====================================================
+- kode clean, modular, Pydantic models lengkap
+- gunakan dependency db: Session = Depends(get_db)
+- menggunakan response_model
+- sertakan seed data minimal 1 mahasiswa, 1 dosen, 2 matakuliah untuk testing
+
+Buat seluruh file secara lengkap
+
+
+Jangan lanjut ke perhitungan IPK, PDF, atau audit trail lanjutan dulu.
+Fokus hanya pada pembuatan model + endpoint CRUD dasar terlebih dahulu.
+
+
+
+
+####################################
+
+
+
+Lanjutkan Modul Nilai & Transkrip — fokus pada GPA Calculator.
+
+Gunakan tabel "grades" yang sudah dibuat sebelumnya.
+
+====================================================
+TUGAS: IMPLEMENTASI FUNCTION AKADEMIK
+====================================================
+
+Buat file baru di dalam modul grades_system:
+services/gpa_service.py
+
+Implementasikan 3 fungsi berikut secara lengkap:
+
+1. calculate_ips(nim, semester)
+   Logika:
+   • ambil semua grades milik mahasiswa di semester tersebut
+   • hanya hitung MK dengan nilai_angka >= 1.0 (nilai D ke atas)
+   • IPS = Σ(SKS × nilai_angka) / Σ(SKS)
+   • jika tidak ada nilai → return 0.0
+
+2. calculate_ipk(nim)
+   Logika:
+   • ambil seluruh grades mahasiswa
+   • jika suatu mata kuliah diulang, ambil nilai tertinggi (berdasarkan nilai_angka)
+   • hanya hitung MK dengan nilai >= D
+   • IPK = Σ(SKS × nilai_angka) / Σ(SKS)
+   • jika mahasiswa semester 1 → return 0.0
+
+3. get_transcript(nim)
+   Return struktur:
+   {
+     "biodata": {...},
+     "semester_list": [
+        {
+          "semester": "1",
+          "courses": [
+              {"kode": "...", "nama": "...", "sks": 3, "nilai_huruf": "A", "nilai_angka": 4.0, "mutu": 12}
+          ]
+        }
+     ],
+     "total_sks": int,
+     "ipk": float,
+     "predikat": "Cum Laude" / "Sangat Memuaskan" / "Memuaskan"
+   }
+
+Predikat:
+- Cum Laude       ≥ 3.50
+- Sangat Memuaskan (3.00–3.49)
+- Memuaskan      (2.50–2.99)
+- Cukup          (2.00–2.49)
+- Kurang         (<2.00)
+
+====================================================
+TAMBAHKAN ENDPOINT GPA:
+====================================================
+router = APIRouter(prefix="/api/gpa", tags=["GPA"])
+
+1. GET /api/gpa/ips/{nim}/{semester}
+2. GET /api/gpa/ipk/{nim}
+3. GET /api/gpa/transcript/{nim}
+
+Semua response_model harus jelas.
+
+====================================================
+UNIT TEST
+====================================================
+Buat tests/test_gpa.py:
+Kasus wajib:
+- Semua nilai A
+- Mata kuliah diulang (ambil tertinggi)
+- Mahasiswa tanpa nilai
+- Kombinasi nilai acak
+- Nilai C/D/E mix
+
+Gunakan pytest.
+
+====================================================
+Tambahkan router ke app utama
+====================================================
+include_router(gpa_router)
+
+
+
+
+####################################
+
+
+Sekarang tambah fitur PDF Generator untuk Modul Nilai & Transkrip.
+
+====================================================
+TUGAS: GENERATE TRANSKRIP PDF
+====================================================
+
+Gunakan library WeasyPrint atau ReportLab.
+
+Format PDF wajib:
+
+HEADER:
+- Logo kampus (gunakan pada web_dashboard/static/logoistn.png)
+- Judul: “TRANSKRIP AKADEMIK”
+- Garis horizontal tebal
+
+BIODATA:
+• NIM  
+• Nama  
+• Program Studi  
+• Angkatan  
+
+PER SEMESTER:
+Tabel berkolom:
+- Kode MK
+- Nama MK
+- SKS
+- Nilai Huruf
+- Mutu
+
+FOOTER:
+- Total SKS
+- IPK
+- Predikat
+- Tanda tangan Dekan
+====================================================
+ENDPOINT PDF
+====================================================
+Buat endpoint:
+GET /api/gpa/transcript/{nim}/pdf
+
+Return FileResponse (application/pdf)
+
+Gunakan data dari fungsi get_transcript(nim).
+
+Template PDF:
+- Buat file templates/transcript_template.html (jika pakai HTML → PDF)
+- Tambahkan transcript_style.css untuk styling profesional
+
+====================================================
+INTEGRASI DASHBOARD MAHASISWA
+====================================================
+Pada dashboard mahasiswa:
+- buat tombol “Download Transkrip (PDF)”
+- tombol memanggil endpoint PDF di atas
+- hasil file bernama: transkrip_{nim}.pdf
+
+
+
+
+####################################
+
+
+sekarang ubah seluruh implementasi PDF Generator untuk Modul Nilai & Transkrip.
+
+- HAPUS semua pemakaian WeasyPrint
+- Ganti SEPENUHNYA dengan ReportLab (Platypus)
+- Pastikan endpoint & struktur file tidak berubah
+
+REQUIREMENTS PENTING:
+
+Gunakan ReportLab, import sebagai berikut:
+
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+
+
+Jangan gunakan HTML lagi.
+→ Hapus file transcript_template.html dan transcript_style.css jika tidak diperlukan.
+
+Buat PDF layout menggunakan Platypus elements (Paragraph, Table, Image).
+
+Lokasi logo:
+web_dashboard/static/logoistn.png
+
+Lokasi output PDF:
+generated_pdfs/transkrip_{nim}.pdf
+
+Tidak ada dependensi luar selain ReportLab.
+Pastikan kode bisa berjalan tanpa masalah.
+
+TUGAS UTAMA:
+1. Perbaiki function generator PDF
+
+Ganti seluruh kode WeasyPrint menjadi:
+
+Create SimpleDocTemplate(A4)
+
+Tambahkan Header:
+
+Logo (Image)
+
+Judul: “TRANSKRIP AKADEMIK”
+
+Garis horizontal tebal
+
+Tambahkan Biodata Mahasiswa dari get_transcript(nim):
+
+NIM
+
+Nama
+
+Program Studi
+
+Angkatan
+
+Tambahkan per-semester tabel:
+Kolom:
+
+Kode MK
+
+Nama MK
+
+SKS
+
+Nilai Huruf
+
+Mutu
+
+Gunakan Table + TableStyle
+
+Tambahkan Footer:
+
+Total SKS
+
+IPK
+
+Predikat
+
+Ruang tanda tangan Dekan
+
+2. Perbaiki Endpoint PDF
+
+Endpoint tetap:
+
+GET /api/gpa/transcript/{nim}/pdf
+
+
+Return:
+
+FileResponse(
+    path_to_pdf,
+    media_type="application/pdf",
+    filename=f"transkrip_{nim}.pdf"
+)
+
+
+Pastikan:
+
+Path file benar
+
+Folder generated_pdfs/ dibuat jika belum ada
+
+3. Integrasi Dashboard Mahasiswa
+
+Jangan ubah UI, hanya pastikan endpoint di backend sudah benar.
+
+Link download:
+
+<a href="/api/gpa/transcript/{{ user.nim }}/pdf" class="btn btn-primary">
+    Download Transkrip (PDF)
+</a>
+
+TUJUAN:
+
+- Fungsi PDF sepenuhnya bekerja menggunakan ReportLab.
+
+- Seluruh bagian yang sebelumnya memakai WeasyPrint dihapus.
+
+- Endpoint tetap sama & menghasilkan PDF yang valid.
+
+- Berjalan mulus di Windows tanpa error dependensi.
+
+Output:
+
+- File Python PDF generator baru (berbasis ReportLab)
+
+- Modifikasi pada router_gpa.py
+
+- Perbaikan import dan fungsi helper
+
+- Buat folder generated_pdfs otomatis
+
+- Test generate PDF
+
+
+
+
+####################################
+
+
+Sekarang implementasikan Audit Trail Modul Nilai.
+
+Gunakan tabel grade_history yang sudah dibuat.
+
+====================================================
+TUGAS: AUDIT TRAIL LOGIC
+====================================================
+
+1. Buat service baru audit_service.py
+
+2. Setiap UPDATE pada grades:
+   • simpan old_value (nilai_huruf + nilai_angka)
+   • simpan new_value
+   • simpan changed_by (username dosen)
+   • simpan changed_at (timestamp)
+   • simpan reason (from request)
+
+3. Tambahkan endpoint:
+GET /api/grades/history/{grade_id}
+   - tampilkan semua perubahan nilai untuk grade tersebut
+   - urutkan descending by changed_at
+
+====================================================
+UNIT TEST
+====================================================
+Tes:
+- update nilai 3x → 3 entry di grade_history
+- reason wajib diisi
+- changed_by sesuai session dosen
+
+
+
+####################################
+
+
+Tolong lakukan finalisasi Modul Nilai & Transkrip.
+
+====================================================
+CHECKLIST WAJIB
+====================================================
+[ ] Endpoint CRUD nilai berjalan  
+[ ] IPS & IPK akurat  
+[ ] Transkrip bisa dibuat → PDF  
+[ ] Dosen hanya bisa input nilai untuk MK yang dia ajar  
+[ ] Mahasiswa hanya bisa melihat nilai sendiri  
+[ ] Audit trail lengkap  
+[ ] Swagger UI rapi (tags: Grades, GPA, Transcript)
+
+====================================================
+UI DASHBOARD
+====================================================
+A. Dashboard DOSEN:
+    - List nilai per MK
+    - Form input nilai
+    - Form edit nilai + reason perubahan
+
+B. Dashboard MAHASISWA:
+    - Tabel seluruh nilai
+    - Tampilan IPS tiap semester
+    - Tampilan IPK total
+    - Tombol “Download Transkrip PDF”
+
+
+
+#############################################################
+MODUL PEMBAYARAN
+#############################################################
+
+Saya ingin menambahkan modul baru bernama "payment_system" 
+pada project FastAPI saya yang SUDAH BERJALAN 
+(dengan modul pmb_system, krs_system, schedule_system, grades_system).
+
+ATURAN WAJIB:
+1. JANGAN menggunakan Alembic
+2. JANGAN membuat Base baru
+3. WAJIB gunakan Base dari: pmb_system.database
+4. WAJIB gunakan import absolut
+5. WAJIB memanggil Base.metadata.create_all()
+
+====================================================
+STRUKTUR FOLDER
+====================================================
+
+payment_system/
+├── __init__.py
+├── models.py
+├── schemas.py
+├── services.py
+├── router.py
+
+====================================================
+DATABASE SCHEMA (SQLAlchemy ORM)
+====================================================
+
+Gunakan:
+from pmb_system.database import Base, engine
+
+Buat TABEL berikut:
+
+A. billing
+- id (PK)
+- nim (FK → calon_mahasiswa.nim)
+- semester (string)
+- total_amount (int)
+- paid_amount (int, default 0)
+- due_date (date)
+- status (ENUM: unpaid, partial, paid, overdue)
+- created_at
+
+B. payment
+- id (PK)
+- billing_id (FK → billing.id)
+- amount (int)
+- method_id (FK → payment_method.id)
+- transaction_ref (string)
+- paid_at
+
+C. payment_method
+- id (PK)
+- name (string) → contoh: CASH, TRANSFER, GATEWAY_SIM
+
+====================================================
+IMPLEMENTASI WAJIB
+====================================================
+
+1. Semua model inherit dari Base
+2. ForeignKey HARUS mengarah ke tabel EXISTING
+3. Di AKHIR file models.py, tulis:
+
+Base.metadata.create_all(bind=engine)
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+- File models.py lengkap
+- File schemas.py (Pydantic)
+- File router.py (kosong dulu, hanya APIRouter)
+- Tidak ada error saat aplikasi dijalankan
+- Tabel billing, payment, payment_method MUNCUL di pmb_local.db
+
+
+
+
+################################
+
+
+
+Saya sudah memiliki modul baru bernama payment_system
+dengan file:
+- payment_system/router.py (sudah berisi APIRouter)
+
+Sekarang saya ingin MENAMPILKAN modul pembayaran di Swagger UI (/docs).
+
+KONTEKS PENTING:
+- Project FastAPI SUDAH BERJALAN
+- main.py sudah meng-include router dari:
+  pmb_system, krs_system, schedule_system, grades_system, auth_system
+- Jangan mengubah struktur router lain
+- Jangan membuat FastAPI app baru
+
+====================================================
+TUGAS ANDA
+====================================================
+
+1. Update main.py
+2. Tambahkan import router payment_system
+3. Include router ke app FastAPI
+4. Gunakan:
+   - prefix: /api/payment
+   - tags: ["Payment"]
+
+====================================================
+ATURAN WAJIB
+====================================================
+
+1. Gunakan IMPORT ABSOLUT
+2. Jangan memodifikasi router lain
+3. Jangan menyentuh database / models
+4. Jangan membuat endpoint baru
+5. Fokus HANYA integrasi Swagger UI
+
+====================================================
+HASIL YANG SAYA HARAPKAN
+====================================================
+
+- payment_system muncul di Swagger UI (/docs)
+- Tidak ada error saat aplikasi dijalankan
+- Struktur main.py tetap rapi & konsisten
+
+
+
+
+################################
+
+
+Saya ingin MELANJUTKAN modul payment_system
+pada project FastAPI saya yang SUDAH BERJALAN.
+
+
+====================================================
+TUJUAN PROMPT INI
+====================================================
+
+Mengimplementasikan PAYMENT WORKFLOW
+dan MENAMPILKAN endpoint payment di Swagger UI (/docs)
+
+====================================================
+FILE YANG BOLEH DIUBAH
+====================================================
+
+payment_system/
+├── services.py
+├── router.py
+├── schemas.py (jika perlu tambahan schema)
+
+====================================================
+PAYMENT WORKFLOW YANG HARUS ADA
+====================================================
+
+1. FUNCTION: process_payment
+----------------------------------------------------
+process_payment(
+    db,
+    billing_id: int,
+    amount: int,
+    method_id: int,
+    transaction_ref: str
+)
+
+LOGIC:
+- Ambil billing berdasarkan billing_id
+- Jika billing TIDAK ditemukan → raise HTTPException 404
+- Tambahkan record ke tabel payment
+- Tambahkan amount ke billing.paid_amount
+
+STATUS UPDATE:
+- Jika paid_amount == 0 → unpaid
+- Jika paid_amount < total_amount → partial
+- Jika paid_amount >= total_amount → paid
+
+Semua proses HARUS dalam satu transaction database
+(db.add, db.commit, db.refresh)
+
+====================================================
+2. ENDPOINT: Manual Payment
+====================================================
+
+POST /api/payment/pay
+
+Request body:
+{
+  "billing_id": 1,
+  "amount": 2500000,
+  "method_id": 1,
+  "transaction_ref": "MANUAL-001"
+}
+
+Response:
+{
+  "message": "Payment processed",
+  "billing_status": "partial"
+}
+
+====================================================
+3. ENDPOINT: Payment Webhook (SIMULASI)
+====================================================
+
+POST /api/payment/webhook
+
+Request body:
+{
+  "signature": "valid-signature",
+  "billing_id": 1,
+  "amount": 5000000,
+  "method_id": 3,
+  "transaction_ref": "GW-XYZ-001",
+  "status": "SUCCESS"
+}
+
+LOGIC:
+- Verify signature (cek == "valid-signature")
+- Jika signature salah → 401 Unauthorized
+- Jika status != "SUCCESS" → ignore
+- Panggil process_payment()
+- Return 200 OK
+
+====================================================
+4. ROUTER WAJIB TERDAFTAR DI SWAGGER
+====================================================
+
+router.py HARUS:
+- Menggunakan APIRouter()
+- Prefix: /api/payment
+- Tags: ["Payment"]
+- Endpoint muncul di /docs
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+Endpoint muncul di Swagger UI
+POST /api/payment/pay berfungsi
+POST /api/payment/webhook berfungsi
+Status billing berubah sesuai pembayaran
+Tidak ada error runtime
+Tidak mengganggu modul lain
+
+
+
+
+################################
+
+
+
+Saya ingin menambahkan FITUR BARU ke modul payment_system
+pada project FastAPI saya yang SUDAH BERJALAN.
+
+ATURAN WAJIB (JANGAN DILANGGAR):
+1. JANGAN membuat Base baru
+2. WAJIB gunakan Base dari: pmb_system.database
+3. WAJIB gunakan import ABSOLUT
+4. JANGAN mengubah tabel existing (pmb, krs, dll)
+5. JANGAN menggunakan Alembic
+6. SEMUA query harus lewat SQLAlchemy ORM
+7. Billing hanya dibuat untuk mahasiswa dengan status APPROVED
+8. Billing dibuat berdasarkan data SEMESTER di tabel KRS
+
+====================================================
+KONTEKS DATABASE (PENTING)
+====================================================
+
+TABEL EXISTING:
+
+1. calon_mahasiswa
+- nim
+- status (value: "approved", "pending", dll)
+
+2. krs
+- nim
+- semester
+- status (DIGUNAKAN UNTUK KRS SAJA, BUKAN status mahasiswa)
+
+3. billing (payment_system)
+- nim
+- semester
+- total_amount
+- paid_amount
+- due_date
+- status
+
+====================================================
+ATURAN BISNIS BILLING
+====================================================
+
+1. Billing dibuat PER SEMESTER BERDASARKAN data KRS
+2. Mahasiswa HARUS:
+   - ada di tabel calon_mahasiswa
+   - status = "approved"
+3. Jika billing untuk (nim, semester) SUDAH ADA → JANGAN buat ulang
+4. Nominal SPP:
+   - Program Studi dengan kode TIF  : 5_000_000
+   - Program Studi dengan kode SIF : 4_000_000
+   (ambil program_studi dari calon_mahasiswa)
+5. Status awal billing = "unpaid"
+6. paid_amount default = 0
+7. due_date = 14 hari dari tanggal generate
+
+====================================================
+IMPLEMENTASI YANG DIMINTA
+====================================================
+
+A. services.py
+----------------
+Buat fungsi:
+
+generate_billing_per_semester(db: Session, semester: str)
+
+Logic WAJIB:
+1. Ambil semua data KRS untuk semester tersebut
+2. Join ke calon_mahasiswa
+3. Filter hanya mahasiswa dengan status = "approved"
+4. Cek apakah billing (nim, semester) sudah ada
+5. Jika belum ada → buat billing baru
+6. Return jumlah billing yang berhasil dibuat
+
+B. router.py
+----------------
+Tambahkan endpoint:
+
+POST /billing/generate
+
+Request body:
+{
+  "semester": "2024-Genap"
+}
+
+Response:
+{
+  "message": "Billing generated",
+  "created": X
+}
+
+Gunakan tags Swagger: "Payment"
+
+C. VALIDASI WAJIB
+----------------
+- Jika semester tidak ditemukan di KRS → return 404
+- Jika tidak ada mahasiswa approved → return message yang jelas
+- Semua error harus pakai HTTPException
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+1. Endpoint /api/payment/billing/generate muncul di Swagger UI
+2. Billing hanya dibuat untuk mahasiswa APPROVED
+3. Billing tidak duplikat per semester
+4. Aplikasi berjalan TANPA ERROR
+5. Data billing dapat tersimpan di pmb_local.db
+
+
+
+
+
+
+################################
+
+
+
+
+Saya ingin MEMPERBAIKI dan MENYESUAIKAN modul Billing Generator
+agar SELARAS dengan modul KRS dan Payment.
+
+====================================================
+ATURAN WAJIB
+====================================================
+1. JANGAN buat Base baru
+2. JANGAN gunakan Alembic
+3. WAJIB gunakan Base dari pmb_system.database
+4. WAJIB gunakan import absolut
+5. Billing dibuat PER mahasiswa, bukan global
+
+====================================================
+ALUR BISNIS YANG BENAR
+====================================================
+
+1. Billing dibuat berdasarkan DATA KRS
+   - Ambil NIM dan semester dari tabel krs
+
+2. Validasi mahasiswa
+   - Ambil data dari calon_mahasiswa
+   - HANYA mahasiswa dengan status = "approved" yang boleh dibuatkan billing
+
+3. Relasi Billing ↔ KRS
+   - Billing = prasyarat approval KRS
+   - Jika billing unpaid → KRS TIDAK BOLEH approve
+   - Jika billing partial / paid → KRS BISA approve
+
+====================================================
+ENDPOINT YANG HARUS DIBUAT
+====================================================
+
+POST /api/payment/billing/generate
+
+Request Body:
+{
+  "nim": "2025TIF003",
+  "semester": "2025/1"
+}
+
+====================================================
+LOGIKA generate_billing
+====================================================
+
+1. Cari data KRS:
+   - WHERE krs.nim == request.nim
+   - AND krs.semester == request.semester
+   - Jika tidak ada → return 404 "KRS not found"
+
+2. Validasi mahasiswa:
+   - Ambil calon_mahasiswa berdasarkan NIM
+   - Jika status != "approved" → return 400
+
+3. Cek billing existing:
+   - Jika billing untuk (nim + semester) sudah ada → return 400
+
+4. Tentukan biaya:
+   - Teknik → 5_000_000
+   - Ekonomi → 4_000_000
+
+5. Insert billing:
+   - nim
+   - semester
+   - total_amount
+   - paid_amount = 0
+   - due_date = today + 14 hari
+   - status = "unpaid"
+
+6. Return response sukses
+
+====================================================
+OUTPUT YANG WAJIB
+====================================================
+
+1. Endpoint muncul di Swagger UI
+2. Request body hanya: nim + semester
+3. Billing tersimpan ke tabel billing
+4. Tidak error "No KRS records found"
+5. Konsisten dengan modul KRS & Payment
+
+
+
+
+
+################################
+
+
+
+Saya ingin menambahkan fitur REMINDER & DENDA OTOMATIS
+pada modul payment_system di project FastAPI saya.
+
+====================================================
+LINGKUNGAN WAJIB
+====================================================
+
+- FastAPI sudah berjalan
+- SQLAlchemy ORM
+- APScheduler digunakan
+- Database: SQLite (pmb_local.db)
+
+====================================================
+ATURAN WAJIB (JANGAN DILANGGAR)
+====================================================
+
+1. JANGAN membuat Base baru
+2. WAJIB gunakan Base dari: pmb_system.database
+3. WAJIB gunakan import absolut
+4. JANGAN gunakan Alembic
+5. JANGAN membuat thread manual
+6. APScheduler HARUS dijalankan melalui FastAPI startup event
+7. Scheduler HARUS aman jika aplikasi direstart (idempotent)
+
+====================================================
+TUJUAN FITUR
+====================================================
+
+1. Reminder otomatis untuk billing yang:
+   - status = 'unpaid' atau 'partial'
+   - sudah melewati due_date
+
+2. Denda otomatis:
+   - Jika lewat due_date → status berubah jadi 'overdue'
+   - Denda = 1% dari total_amount per minggu keterlambatan
+
+====================================================
+DETAIL IMPLEMENTASI
+====================================================
+
+A. Scheduler
+- Gunakan APScheduler BackgroundScheduler
+- Job dijalankan 1x per hari
+- Job hanya satu (tidak duplikat saat restart)
+
+B. Logika Job
+Untuk setiap record di tabel billing:
+- Jika due_date < today AND status != 'paid'
+  - Hitung jumlah minggu keterlambatan
+  - Tambahkan denda ke total_amount
+  - Update status menjadi 'overdue'
+
+C. Reminder
+- Cetak log (print / logging):
+  "Reminder sent to NIM {nim} for semester {semester}"
+
+====================================================
+STRUKTUR FILE
+====================================================
+
+payment_system/
+├── scheduler.py   ← WAJIB buat file ini
+├── services.py    ← update jika perlu
+├── models.py
+├── router.py
+
+====================================================
+INTEGRASI FASTAPI
+====================================================
+
+- Scheduler HARUS di-start pada event FastAPI startup
+- JANGAN memulai scheduler saat import module
+
+Contoh konsep:
+@app.on_event("startup")
+def start_scheduler():
+    ...
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+1. File scheduler.py lengkap
+2. Scheduler berjalan otomatis saat app start
+3. Status billing otomatis berubah menjadi 'overdue'
+4. Denda bertambah otomatis
+5. Tidak ada error saat app dijalankan
+
+
+
+
+
+
+
+################################
+
+
+
+
+
+Saya ingin menambahkan fitur pada modul payment_system:
+AI Financial Report (READ-ONLY, ANALYTICS ONLY)
+
+ATURAN KETAT (WAJIB DIPATUHI):
+1. JANGAN mengubah struktur database
+2. JANGAN menambah tabel baru
+3. JANGAN mengubah logic payment, billing, scheduler
+4. HANYA membaca data (SELECT)
+5. WAJIB gunakan SQLAlchemy ORM
+6. WAJIB gunakan import absolut
+7. WAJIB kompatibel dengan Python 3.11
+8. Endpoint hanya untuk laporan (tidak ada INSERT/UPDATE)
+
+====================================================
+TUJUAN
+====================================================
+
+Membuat endpoint API untuk menghasilkan laporan keuangan berbasis data pembayaran
+yang siap ditampilkan di dashboard frontend.
+
+====================================================
+SUMBER DATA
+====================================================
+
+Gunakan tabel berikut (SUDAH ADA):
+- billing
+- payment
+- calon_mahasiswa
+- krs
+
+====================================================
+ENDPOINT BARU (WAJIB)
+====================================================
+
+POST /api/payment/report
+
+Request body:
+{
+  "month": 1,
+  "year": 2025
+}
+
+====================================================
+OUTPUT (FORMAT JSON WAJIB)
+====================================================
+
+{
+  "total_revenue": 125000000,
+  "collection_rate": 78.5,
+  "paid_students": 157,
+  "total_students": 200,
+  "top_10_arrears": [
+    {
+      "nim": "2025TIF003",
+      "semester": "2025/1",
+      "outstanding": 3500000
+    }
+  ],
+  "recommendation": "Kirim reminder ke 43 mahasiswa dengan tunggakan lebih dari 2 bulan"
+}
+
+====================================================
+LOGIC DETAIL
+====================================================
+
+1. Total Revenue
+- SUM(payment.amount)
+- Filter by payment.paid_at MONTH & YEAR
+
+2. Collection Rate
+- paid_students / total_students * 100
+- paid_students = mahasiswa yang billing.status IN ('paid','partial')
+
+3. Top 10 Arrears
+- billing.status IN ('unpaid','overdue')
+- outstanding = total_amount - paid_amount
+- ORDER BY outstanding DESC
+- LIMIT 10
+
+4. Recommendation
+- Hitung billing dengan status overdue
+- Jika jumlah > 0:
+  "Kirim reminder ke X mahasiswa dengan tunggakan lebih dari 2 bulan"
+- Jika 0:
+  "Tidak ada tunggakan signifikan"
+
+====================================================
+IMPLEMENTASI TEKNIS
+====================================================
+
+- Tambahkan fungsi di:
+  payment_system/services.py
+  → generate_financial_report(month, year, db)
+
+- Tambahkan endpoint di:
+  payment_system/router.py
+
+- Gunakan Pydantic schema untuk request & response
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+Endpoint /api/payment/report muncul di Swagger UI  
+Bisa diuji langsung dari Swagger  
+Tidak ada error  
+Tidak mempengaruhi modul lain  
+Siap dipakai dashboard frontend  
+
+
+
+
+################################
+
+
+Saya ingin MENAMBAHKAN tampilan informasi PEMBAYARAN SPP
+ke DASHBOARD MAHASISWA yang sudah ada (FastAPI + Jinja2).
+
+ATURAN WAJIB:
+1. JANGAN mengubah struktur database
+2. JANGAN mengubah logic payment/billing
+3. JANGAN membuat Base baru
+4. WAJIB gunakan model Billing dari payment_system
+5. Data diambil berdasarkan user.nim (login user)
+6. Gunakan Session dari pmb_system.database
+7. WAJIB aman jika billing kosong
+
+====================================================
+TUJUAN
+====================================================
+
+Menampilkan tabel TAGIHAN SPP MAHASISWA:
+
+Per NIM:
+- Bisa memiliki BANYAK billing
+- Setiap billing = 1 semester
+
+Kolom tabel:
+- semester
+- total_amount
+- paid_amount
+- sisa = total_amount - paid_amount
+- status (unpaid / partial / paid / overdue)
+
+====================================================
+YANG HARUS DIBUAT
+====================================================
+
+1. QUERY DATABASE
+- Ambil semua data Billing
+- Filter: Billing.nim == user.nim
+- Order by semester ASC
+
+2. CONTEXT DATA
+- Kirim billing_data ke template mahasiswa
+
+Contoh struktur data:
+[
+  {
+    semester,
+    total_amount,
+    paid_amount,
+    remaining,
+    status
+  }
+]
+
+3. UPDATE TEMPLATE DASHBOARD MAHASISWA
+- Tambahkan CARD baru: "Informasi Pembayaran SPP"
+- Tampilkan data dalam tabel Bootstrap
+- Jika tidak ada billing:
+  tampilkan teks "Belum ada tagihan SPP"
+
+====================================================
+BATASAN PENTING
+====================================================
+
+- JANGAN menghapus konten dashboard yang sudah ada
+- HANYA MENAMBAHKAN bagian pembayaran
+- JANGAN hardcode nim
+- Gunakan user.nim dari session / dependency login
+- Jangan buat endpoint API baru
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+1. Potongan kode Python (route dashboard mahasiswa)
+2. Potongan kode Jinja2 (HTML tabel pembayaran)
+3. Penjelasan singkat lokasi penempatan kode
+4. Tidak ada error runtime
+
+
+
+
+
+
+################################
+
+
+
+Saya ingin MENAMBAHKAN fitur tampilan DATA PEMBAYARAN ke DASHBOARD ADMIN
+pada sistem FastAPI + Jinja2 yang SUDAH BERJALAN.
+
+ATURAN KERAS (WAJIB DIIKUTI)
+1. JANGAN membuat endpoint baru di payment_system selain yang SUDAH ADA
+2. JANGAN membuat endpoint admin palsu seperti /api/payment/admin/*
+3. JANGAN mengubah database schema
+4. JANGAN mengubah logic payment, billing, atau scheduler
+5. HANYA:
+   - Memanfaatkan endpoint payment YANG SUDAH ADA
+   - Menambahkan logic di web_dashboard (admin)
+
+====================================================
+KONDISI SISTEM SAAT INI
+====================================================
+
+Dashboard admin sudah bisa menampilkan data PMB, KRS, Schedule
+Payment system sudah lengkap:
+   - billing
+   - payment
+   - financial report (AI report) endpoint
+Dashboard mahasiswa SUDAH BERHASIL menampilkan data billing
+
+====================================================
+TARGET FITUR DASHBOARD ADMIN
+====================================================
+
+ADMIN HARUS MELIHAT:
+
+A. COLLECTION RATE PER PROGRAM STUDI
+----------------------------------------------------
+- Teknik Informatika (TIF)
+- Sistem Informasi (SIF)
+
+Collection Rate = 
+(jumlah billing PAID + PARTIAL) / total billing * 100
+
+Tampilkan dalam bentuk:
+- Tabel sederhana
+  Kolom:
+  - Program Studi
+  - Total Mahasiswa
+  - Sudah Bayar
+  - Collection Rate (%)
+
+----------------------------------------------------
+B. GRAFIK PEMBAYARAN BULANAN
+----------------------------------------------------
+Grafik:
+- X axis: Bulan (Jan–Des)
+- Y axis: Total pembayaran (SUM paid_amount)
+
+Data diambil dari:
+- payment.paid_at (bulan & tahun)
+- payment.amount
+
+====================================================
+SUMBER DATA (WAJIB)
+====================================================
+
+Gunakan endpoint YANG SUDAH ADA:
+- Financial report endpoint (AI Financial Report)
+- atau langsung query billing & payment lewat SQLAlchemy
+  (HANYA di web_dashboard, bukan di payment_system)
+
+====================================================
+IMPLEMENTASI YANG DIMINTA
+====================================================
+
+1. Tambahkan logic di:
+   web_dashboard/admin_dashboard route
+   - Ambil data pembayaran via HTTPX
+   - Olah menjadi:
+     - collection_rate_per_prodi
+     - monthly_payment_chart_data
+
+2. Kirim data ke template:
+   admin_dashboard.html
+
+3. Update admin_dashboard.html:
+   - Tambahkan SECTION BARU "Keuangan (SPP)"
+   - Tampilkan:
+     a. Tabel Collection Rate per Prodi
+     b. Grafik pembayaran bulanan (Chart.js)
+
+WAJIB:
+- Grafik HARUS menggunakan Chart.js
+- Jika data kosong, tampilkan pesan:
+  "Belum ada data pembayaran"
+
+====================================================
+OUTPUT YANG DIHARAPKAN
+====================================================
+
+Dashboard admin menampilkan:
+  Collection rate per prodi
+  Grafik pembayaran per bulan
+Tidak merusak dashboard mahasiswa
+Tidak merusak modul lain
+Tidak ada error runtime
+
+
+##################################################################
+MODUL PRESENSI
+##################################################################
+
+Saya ingin MENAMBAHKAN modul baru bernama "attendance_system"
+pada project FastAPI saya yang SUDAH BERJALAN.
+
+ATURAN WAJIB (JANGAN DILANGGAR):
+1. JANGAN membuat Base baru
+2. WAJIB gunakan Base dari: pmb_system.database
+3. WAJIB gunakan import ABSOLUT
+4. WAJIB memanggil Base.metadata.create_all()
+5. JANGAN mengubah modul lain (PMB, KRS, Schedule, Grades, Payment)
+
+====================================================
+STRUKTUR FOLDER (WAJIB)
+====================================================
+
+attendance_system/
+├── __init__.py
+├── models.py
+├── schemas.py
+├── services.py
+├── router.py
+
+====================================================
+DATABASE SCHEMA (SQLAlchemy ORM)
+====================================================
+
+Gunakan:
+from pmb_system.database import Base, engine
+
+Buat tabel berikut:
+
+A. attendance_session
+- id (PK)
+- schedule_id (FK → schedule.id)
+- session_number (int) → 1 s.d. 16
+- qr_token (string, unique)
+- is_active (boolean, default False)
+- created_at
+
+B. attendance_record
+- id (PK)
+- attendance_session_id (FK → attendance_session.id)
+- nim (FK → calon_mahasiswa.nim)
+- scanned_at
+
+====================================================
+KETENTUAN WAJIB
+====================================================
+
+1. Semua model inherit dari Base
+2. ForeignKey HARUS ke tabel EXISTING
+3. Di AKHIR models.py tulis:
+
+Base.metadata.create_all(bind=engine)
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+- models.py lengkap
+- schemas.py dasar
+- router.py hanya APIRouter (kosong endpoint)
+- Tidak ada error saat aplikasi dijalankan
+- Tabel presensi muncul di database
+
+
+
+
+
+
+
+
+######################################
+
+
+
+
+
+
+
+
+
+
+Saya ingin MELANJUTKAN modul attendance_system
+pada project FastAPI yang SUDAH BERJALAN.
+
+ATURAN KERAS:
+1. JANGAN membuat tabel baru
+2. JANGAN memanggil Base.metadata.create_all()
+3. WAJIB gunakan get_db dari pmb_system.database
+4. WAJIB gunakan import ABSOLUT
+5. JANGAN mengubah modul lain
+6. HANYA edit attendance_system
+
+====================================================
+TUJUAN
+====================================================
+
+Membuat API PRESENSI BERBASIS QR CODE
+
+====================================================
+ENDPOINT WAJIB
+====================================================
+
+1. DOSEN – Generate QR per sesi
+POST /api/attendance/session/generate
+
+Request:
+{
+  "schedule_id": 10,
+  "session_number": 1
+}
+
+Logic:
+- Pastikan session_number 1–16
+- Buat / update attendance_session
+- Generate qr_token unik
+- Set is_active = true
+
+----------------------------------------------------
+
+2. MAHASISWA – Scan QR
+POST /api/attendance/scan
+
+Request:
+{
+  "qr_token": "abc123",
+  "nim": "2025TIF003"
+}
+
+Logic:
+- Validasi qr_token aktif
+- Cegah presensi ganda
+- Simpan ke attendance_record
+- Return sukses
+
+====================================================
+OUTPUT WAJIB
+====================================================
+
+- Endpoint muncul di Swagger
+- QR token valid & aman
+- Tidak ada duplikasi presensi
+- Tidak mengubah sistem lain
+
+
+
+
+
+
+
+
+
+######################################
+
+
+
+
+
+
+
+
+
+Saya ingin MENGINTEGRASIKAN modul PRESENSI (QR Code)
+ke DASHBOARD DOSEN yang SUDAH ADA
+pada project FastAPI + Jinja2 yang SUDAH BERJALAN.
+
+ATURAN KETAT (WAJIB DIIKUTI):
+1. JANGAN membuat endpoint API baru
+2. JANGAN mengubah logic attendance backend
+3. JANGAN mengubah database schema
+4. JANGAN membuat FastAPI app baru
+5. HANYA mengubah file di web_dashboard (dosen)
+6. WAJIB gunakan endpoint attendance YANG SUDAH ADA
+7. WAJIB gunakan HTTPX untuk komunikasi API
+8. WAJIB konsisten dengan pola dashboard dosen existing
+
+====================================================
+KONDISI SISTEM SAAT INI
+====================================================
+
+Modul attendance SUDAH ADA
+Endpoint backend SUDAH BERFUNGSI:
+- POST /api/attendance/session/generate
+- POST /api/attendance/scan
+Dashboard dosen SUDAH MENAMPILKAN tabel jadwal mengajar
+Di tabel jadwal dosen SUDAH ADA tombol "Input Nilai"
+
+====================================================
+TUJUAN PROMPT INI
+====================================================
+
+Menambahkan FITUR PRESENSI DOSEN berbasis QR Code
+ke DASHBOARD DOSEN.
+
+====================================================
+PERUBAHAN UI YANG DIMINTA
+====================================================
+
+A. TABEL JADWAL DOSEN
+----------------------------------------------------
+Pada setiap baris jadwal dosen, TAMBAHKAN tombol baru:
+
+Button:
+- Label: "Presensi"
+- Style: Bootstrap btn-warning
+- Posisi: sejajar dengan tombol "Input Nilai"
+
+====================================================
+B. HALAMAN PRESENSI DOSEN
+====================================================
+
+Saat tombol "Presensi" diklik:
+- Dosen diarahkan ke halaman baru:
+  /dashboard/dosen/presensi/{schedule_id}
+
+Halaman ini menampilkan:
+
+1. Informasi Jadwal
+- Mata kuliah
+- Kelas
+- Semester
+
+2. GRID 16 SESI PERTEMUAN
+- Sesi 1 sampai 16
+- Setiap sesi berupa CARD / BUTTON
+
+====================================================
+C. LOGIKA SESI PRESENSI
+====================================================
+
+Untuk setiap sesi:
+
+Jika BELUM AKTIF:
+- Tampilkan tombol:
+  "Generate QR"
+
+Saat diklik:
+- Panggil endpoint:
+  POST /api/attendance/session/generate
+
+Request body:
+{
+  "schedule_id": <id>,
+  "session_number": <1-16>
+}
+
+Response:
+- qr_token
+- status = active
+
+====================================================
+Jika SUDAH AKTIF:
+----------------------------------------------------
+- Tampilkan QR Code (render dari qr_token)
+- Tampilkan teks:
+  "QR aktif — silakan mahasiswa scan"
+
+QR Code:
+- Render di frontend (qrcode.js / library JS sederhana)
+- TIDAK perlu simpan file QR di server
+
+====================================================
+D. ATURAN TAMBAHAN
+====================================================
+
+1. QR hanya tampil untuk SESI tersebut
+2. Tidak boleh generate ulang jika sesi masih aktif
+3. UI HARUS aman jika data kosong
+4. Jangan menghapus fitur dashboard dosen lain
+
+====================================================
+FILE YANG BOLEH DIUBAH
+====================================================
+
+web_dashboard/
+├── dosen_dashboard.py   (atau route dosen)
+├── templates/
+│   ├── dosen_dashboard.html
+│   └── dosen_presensi.html (BARU)
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+Tombol "Presensi" muncul di tabel jadwal dosen
+Halaman presensi dosen bisa dibuka
+16 sesi tampil rapi
+QR Code bisa di-generate per sesi
+QR tampil langsung di dashboard dosen
+Tidak ada endpoint baru di Swagger
+Tidak merusak modul lain
+Tidak ada error runtime
+
+KERJAKAN DENGAN PERUBAHAN TERKONTROL, DAN KONSISTEN.
+
+
+
+
+
+######################################
+
+
+
+
+
+Saya ingin MELANJUTKAN modul presensi (attendance_system) 
+pada project FastAPI + Jinja2 yang SUDAH BERJALAN.
+
+====================================================
+KONDISI SISTEM SAAT INI
+====================================================
+
+Modul attendance_system SUDAH ADA
+Endpoint berikut SUDAH BERFUNGSI dan TIDAK BOLEH DIUBAH:
+- POST /api/attendance/session/generate
+- GET  /api/attendance/session/schedule/{schedule_id}
+- POST /api/attendance/scan
+
+Dashboard DOSEN:
+- Sudah bisa generate QR Code per sesi (1–16)
+- QR token valid dan tersimpan di database
+
+Dashboard MAHASISWA SUDAH ADA
+- Menggunakan FastAPI + Jinja2
+- User login membawa data: user.nim, user.role, user.token
+
+====================================================
+TUJUAN PROMPT INI
+====================================================
+
+Menambahkan FITUR PRESENSI MAHASISWA berbasis QR CODE:
+
+1. Mahasiswa menekan tombol "Presensi"
+2. Kamera terbuka (webcam)
+3. Mahasiswa scan QR Code dari layar dosen
+4. Sistem otomatis mencatat presensi ke database
+
+====================================================
+ATURAN WAJIB (JANGAN DILANGGAR)
+====================================================
+
+1. JANGAN membuat tabel database baru
+2. JANGAN mengubah logic attendance backend
+3. JANGAN membuat endpoint baru
+4. JANGAN mengubah endpoint attendance yang sudah ada
+5. WAJIB menggunakan endpoint:
+   POST /api/attendance/scan
+6. WAJIB gunakan user.nim dari session login
+7. WAJIB gunakan JavaScript Camera API (getUserMedia)
+8. WAJIB gunakan library QR Scanner (html5-qrcode atau setara CDN)
+
+====================================================
+ALUR BISNIS YANG BENAR
+====================================================
+
+1. Mahasiswa membuka dashboard
+2. Klik tombol:
+   "Presensi (Scan QR)"
+3. Kamera terbuka
+4. QR Code terbaca → menghasilkan qr_token
+5. Kirim request ke backend:
+
+POST /api/attendance/scan
+Body JSON:
+{
+  "qr_token": "TOKEN_DARI_QR",
+  "nim": "NIM_MAHASISWA"
+}
+
+6. Backend menyimpan ke tabel attendance_record
+7. Frontend menampilkan notifikasi:
+   - "Presensi berhasil"
+   - atau error (sudah presensi / QR tidak aktif)
+
+====================================================
+IMPLEMENTASI YANG DIMINTA
+====================================================
+
+A. DASHBOARD MAHASISWA (Jinja2)
+----------------------------------------------------
+
+Tambahkan:
+- Button: "Presensi (Scan QR)"
+- Modal / halaman baru berisi:
+  - Tampilan kamera
+  - Area scan QR
+
+B. JAVASCRIPT
+----------------------------------------------------
+
+1. Aktifkan kamera via:
+   navigator.mediaDevices.getUserMedia
+2. Gunakan library QR scanner dari CDN
+3. Saat QR terbaca:
+   - Stop kamera
+   - Kirim fetch POST ke /api/attendance/scan
+4. Sertakan Authorization Bearer token (jika ada)
+5. Handle response:
+   - SUCCESS → alert / badge hijau
+   - FAILED → alert merah
+
+C. UX MINIMAL
+----------------------------------------------------
+
+- Tampilkan teks:
+  "Arahkan kamera ke QR Code presensi"
+- Jika kamera tidak tersedia:
+  tampilkan pesan error yang jelas
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+Mahasiswa bisa scan QR langsung dari dashboard
+Presensi masuk ke database attendance_record
+Tidak ada endpoint baru
+Tidak mengubah backend attendance
+Tidak merusak dashboard dosen
+Aman jika mahasiswa scan lebih dari sekali (backend handle)
+
+KERJAKAN DENGAN PERUBAHAN MINIMAL DAN TERKONTROL.
+
+
+
+
+
+######################################
+
+
+
+
+Saya ingin MELANJUTKAN modul presensi (attendance_system)
+pada project FastAPI + Jinja2 yang SUDAH BERJALAN.
+
+====================================================
+KONDISI SISTEM SAAT INI
+====================================================
+
+Modul attendance_system SUDAH ADA dan STABIL
+
+Endpoint berikut SUDAH BERFUNGSI dan TIDAK BOLEH DIUBAH:
+- POST /api/attendance/session/generate
+- GET  /api/attendance/session/schedule/{schedule_id}
+- POST /api/attendance/scan
+
+Dashboard DOSEN:
+- Sudah menampilkan 16 kartu sesi presensi
+- Dosen bisa klik "Generate QR" per sesi
+- QR Code ditampilkan di dashboard dosen
+- qr_token disimpan di database
+- Backend hanya menerima QR dengan is_active = true
+
+Dashboard MAHASISWA:
+- Hanya bisa scan QR yang masih aktif
+- QR expired otomatis ditolak backend
+
+====================================================
+TUJUAN PROMPT INI
+====================================================
+
+Menambahkan FITUR AUTO REFRESH QR CODE SETIAP 1 MENIT
+pada DASHBOARD DOSEN agar QR tidak statis dan lebih aman.
+
+====================================================
+ATURAN WAJIB (JANGAN DILANGGAR)
+====================================================
+
+1. JANGAN membuat tabel database baru
+2. JANGAN mengubah struktur database
+3. JANGAN membuat endpoint baru
+4. JANGAN mengubah endpoint yang sudah ada
+5. WAJIB gunakan endpoint berikut:
+   - POST /api/attendance/session/generate
+6. Backend attendance logic TIDAK BOLEH DIUBAH
+7. Auto refresh dilakukan di FRONTEND (JavaScript)
+8. Perubahan harus MINIMAL dan TERKONTROL
+
+====================================================
+ALUR BISNIS YANG BENAR
+====================================================
+
+1. Dosen membuka dashboard presensi
+2. Jika sesi presensi AKTIF:
+   - QR Code otomatis diperbarui setiap 60 detik
+3. Auto refresh dilakukan dengan:
+   - Memanggil ulang endpoint generate
+   - Menghasilkan qr_token baru
+4. QR lama menjadi tidak aktif
+5. Mahasiswa hanya bisa scan QR terbaru
+
+====================================================
+IMPLEMENTASI YANG DIMINTA
+====================================================
+
+A. DASHBOARD DOSEN (Jinja2)
+----------------------------------------------------
+
+- Tambahkan JavaScript auto refresh QR
+- Gunakan setInterval (60.000 ms)
+- Hanya refresh sesi yang is_active = true
+- QR Code di-update TANPA reload halaman
+
+B. JAVASCRIPT
+----------------------------------------------------
+
+1. Setelah halaman dimuat:
+   - Ambil semua sesi presensi aktif
+2. Jalankan:
+   setInterval(() => refreshQR(), 60000)
+3. Untuk setiap sesi aktif:
+   - Panggil POST /api/attendance/session/generate
+4. Update QR Code di DOM
+5. Tangani error dengan console.error (tanpa crash UI)
+
+====================================================
+OUTPUT YANG SAYA HARAPKAN
+====================================================
+
+QR Code dosen otomatis berubah setiap 1 menit
+QR lama otomatis invalid
+Mahasiswa tidak bisa scan QR expired
+Tidak ada perubahan backend
+Tidak ada endpoint baru
+Tidak merusak fitur presensi yang sudah ada
+
+KERJAKAN DENGAN PERUBAHAN MINIMAL DAN TERKONTROL.
+
+
+
+
+
+
+######################################
+
+
+
+Saya ingin MENAMBAHKAN FITUR REPORT PRESENSI & EARLY WARNING AI pada project FastAPI + Jinja2 yang SUDAH BERJALAN, khusus modul attendance_system.
+==================================================== KONDISI SISTEM SAAT INI
+Project SUDAH STABIL dengan kondisi berikut:
+Modul Presensi
+•	Modul attendance_system SUDAH ADA
+•	Endpoint presensi SUDAH BERFUNGSI dan TIDAK BOLEH DIUBAH:
+o	POST /api/attendance/session/generate
+o	GET /api/attendance/session/schedule/{schedule_id}
+o	POST /api/attendance/scan
+Database (SUDAH ADA)
+•	attendance_session
+•	attendance_record
+•	schedule
+•	student
+•	course
+•	dosen
+TIDAK MENGGUNAKAN table bernama JadwalMahasiswa 
+JANGAN menggunakan atau mengasumsikan tabel tersebut
+Dashboard DOSEN
+•	Dosen dapat generate QR per sesi
+•	QR auto-refresh setiap 1 menit
+•	Presensi mahasiswa tercatat dengan benar
+==================================================== TUJUAN PROMPT INI
+Menambahkan FITUR REPORT PRESENSI DOSEN + ANALISIS EARLY WARNING (RULE-BASED AI)
+Fitur yang ingin ditambahkan:
+1.	Report Presensi per Jadwal
+2.	Export laporan presensi ke CSV
+3.	Early Warning Mahasiswa & Kelas
+4.	Insight otomatis berbasis aturan (rule-based AI)
+==================================================== ATURAN WAJIB (JANGAN DILANGGAR)
+1.	JANGAN mengubah endpoint presensi yang sudah ada
+2.	JANGAN mengubah logic scan QR
+3.	JANGAN membuat tabel database baru
+4.	JANGAN menggunakan tabel fiktif (contoh: JadwalMahasiswa)
+5.	WAJIB gunakan data dari:
+o	attendance_session
+o	attendance_record
+o	schedule
+o	student
+6.	Endpoint baru BOLEH dibuat KHUSUS REPORT
+7.	GUNAKAN folder virtual environtment yang terdapat pada folder .venv311
+8.	AI WAJIB rule-based (BUKAN LLM, BUKAN OpenAI)
+==================================================== ENDPOINT BARU YANG BOLEH DIBUAT
+1. Report Presensi Jadwal
+GET /api/attendance/report/schedule/{schedule_id}
+Menghasilkan:
+•	Daftar mahasiswa
+•	Total sesi (1–16)
+•	Jumlah hadir
+•	Persentase kehadiran
+________________________________________
+2. Export CSV
+GET /api/attendance/report/schedule/{schedule_id}/export/csv
+Output CSV:
+NIM,Nama,Hadir,Total Sesi,Persentase
+________________________________________
+3. Early Warning Insight
+GET /api/attendance/insights/schedule/{schedule_id}
+==================================================== LOGIC REPORT (WAJIB IKUT)
+Per Mahasiswa:
+•	Total sesi = jumlah attendance_session pada jadwal
+•	Hadir = jumlah attendance_record per mahasiswa
+•	Persentase = (hadir / total_sesi) × 100
+Status Kehadiran:
+•	≥ 75% → AMAN
+•	50% – 74% → PERINGATAN
+•	< 50% → KRITIS
+==================================================== LOGIC EARLY WARNING AI (RULE-BASED)
+Mahasiswa:
+•	Jika status PERINGATAN:
+> "Mahasiswa {NAMA} mulai sering absen, disarankan pemantauan."
+•	Jika status KRITIS:
+> "Mahasiswa {NAMA} sering tidak hadir, disarankan konseling akademik."
+Kelas:
+•	Jika rata-rata kehadiran kelas < 60%:
+> "Tingkat kehadiran kelas rendah, pertimbangkan evaluasi metode atau reschedule."
+WAJIB berbasis perhitungan nyata dari database 
+TIDAK BOLEH hardcode
+==================================================== IMPLEMENTASI YANG DIMINTA
+A. BACKEND (FastAPI)
+•	Tambahkan router attendance_report.py
+•	Gunakan SQLAlchemy ORM
+•	Query berbasis attendance_session + attendance_record
+•	Jangan gunakan tabel yang tidak ada
+B. FRONTEND DOSEN (Jinja2)
+Tambahkan halaman:
+•	/dashboard/dosen/attendance/report/{schedule_id}
+Isi halaman:
+•	Tabel presensi mahasiswa
+•	Badge status (AMAN / PERINGATAN / KRITIS)
+•	Tombol:
+o	Export CSV
+•	Section:
+o	Early Warning & Insight AI
+==================================================== OUTPUT YANG SAYA HARAPKAN
+Report presensi akurat 
+Tidak error relasi database 
+Tidak ada asumsi tabel fiktif 
+CSV bisa di-download 
+Insight AI muncul otomatis 
+Aman untuk pengembangan lanjut (grafik / ML)
+KERJAKAN DENGAN STRUKTUR RAPI, QUERY AMAN, DAN PERUBAHAN MINIMAL TERHADAP SISTEM YANG SUDAH ADA.
+
+
+
+
+
+######################################
+
+
+
+
+Saya ingin MEMPERBAIKI LAPORAN PRESENSI pada project FastAPI + Jinja2 yang SUDAH BERJALAN.
+
+====================================================
+KONDISI SISTEM SAAT INI
+====================================================
+
+Project: FastAPI + SQLAlchemy + Jinja2
+Modul: attendance_system
+
+
+Endpoint berikut SUDAH ADA dan SUDAH TERDAFTAR di router:
+- GET /api/attendance/report/schedule/{schedule_id}
+/api/attendance/report/schedule/{schedule_id}/export/csv
+/api/attendance/insights/schedule/{schedule_id}
+
+Namun hasil response MASIH SALAH.
+Pada endpoint /api/attendance/report/schedule/{schedule_id}
+
+Response saat ini:
+- course_name = "Unknown Course"
+- total_students = 0
+- students = []
+
+Padahal:
+- Di dashboard dosen, nama mata kuliah tampil BENAR
+- Di fitur "Daftar Nilai", mahasiswa yang mengambil mata kuliah TERSEDIA
+
+====================================================
+STRUKTUR DATABASE (FAKTA PENTING)
+====================================================
+
+TABEL YANG VALID DAN DIGUNAKAN:
+
+1. jadwal_kelas
+   - id
+   - kode_mk   --> relasi ke matakuliah.kode
+   - dosen_id
+
+2. matakuliah
+   - kode
+   - nama
+
+3. krs_detail
+   - krs_id	--> relasi ke krs.id
+   - matakuliah_id --> relasi ke matakuliah.id
+
+4. krs
+   - nim	--> relasi ke calon_mahasiswa.nim
+   - status
+
+4. calon_mahasiswa
+   - nim
+   - nama_lengkap
+
+5. attendance_session
+   - id
+   - schedule_id (FK ke jadwal_kelas.id)
+
+6. attendance_record
+   - attendance_session_id
+   - nim
+
+TIDAK ADA:
+- relasi ORM otomatis jadwal_kelas.mata_kuliah
+- field jadwal_id
+- tabel tambahan baru
+
+====================================================
+MASALAH UTAMA
+====================================================
+
+1. course_name SALAH karena:
+   - kode saat ini memakai:
+     getattr(schedule, 'mata_kuliah', ...)
+
+   Ini SALAH karena tidak ada relationship tersebut
+
+2. total_students dan students kosong karena:
+   - Query mahasiswa TIDAK sesuai struktur
+
+====================================================
+TUJUAN PROMPT INI
+====================================================
+
+MEMPERBAIKI endpoint berikut TANPA MEMBUAT ENDPOINT BARU:
+
+GET /api/attendance/report/schedule/{schedule_id}
+
+Agar menghasilkan data AKURAT:
+- Nama mata kuliah
+- Daftar mahasiswa
+- Jumlah mahasiswa
+- Rekap presensi per mahasiswa
+
+====================================================
+ATURAN WAJIB (JANGAN DILANGGAR)
+====================================================
+
+1. JANGAN membuat tabel database baru
+2. JANGAN mengubah struktur tabel
+3. JANGAN mengubah endpoint URL
+4. JANGAN mengubah logic attendance scan & QR
+5. WAJIB gunakan relasi manual via query
+6. WAJIB gunakan matakuliah.kode == jadwal_kelas.kode_mk
+
+====================================================
+LOGIC YANG BENAR (WAJIB DIIKUTI)
+====================================================
+
+1. Ambil jadwal dari jadwal_kelas
+2. Ambil matakuliah dengan:
+   Matakuliah.kode == jadwal_kelas.kode_mk
+3. Ambil daftar mahasiswa dari:
+   krs_detail yang terhubung dengan id matakuliah. dari id matakuliah tersebut bisa diambil kode mata kuliah yg sama dengan jadwal kelas.
+4. Untuk setiap mahasiswa:
+   - Hitung kehadiran dari attendance_record
+   - Join ke attendance_session untuk filter schedule_id
+5. Hitung:
+   - total_sessions
+   - persentase kehadiran
+6. Tentukan status:
+   - >= 75%  → AMAN
+   - >= 50%  → PERINGATAN
+   - < 50%   → KRITIS
+
+====================================================
+OUTPUT ENDPOINT (WAJIB SESUAI)
+====================================================
+
+{
+  "success": true,
+  "data": {
+    "schedule_id": 1,
+    "course_code": "IF101",
+    "course_name": "IF101",
+    "lecturer_name": "Dr. Budi Santoso",
+    "total_students": 30,
+    "total_sessions": 3,
+    "students": [
+      {
+        "nim": "2021001",
+        "nama": "Andi Wijaya",
+        "hadir": 2,
+        "total_sesi": 3,
+        "persentase": 66.67,
+        "status": "PERINGATAN"
+      }
+    ]
+  }
+}
+
+====================================================
+YANG HARUS DIKERJAKAN
+====================================================
+
+1. PERBAIKI logic query course_name
+2. PERBAIKI logic query mahasiswa
+3. PASTIKAN total_students sesuai data
+4. PASTIKAN tidak ada akses field / relasi yang tidak ada
+5. Kode HARUS AMAN dan DEFENSIVE (null-safe)
+
